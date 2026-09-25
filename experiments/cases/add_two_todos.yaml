@@ -1,0 +1,11 @@
+name: add_two_todos
+start_path: login.html
+goal: "Đăng nhập bằng demo/demo, thêm hai việc 'Việc A' và 'Việc B' vào danh sách"
+max_steps: 20
+assertions:
+  - id: first-visible
+    kind: text_visible
+    value: "Việc A"
+  - id: second-visible
+    kind: text_visible
+    value: "Việc B"

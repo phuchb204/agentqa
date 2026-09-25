@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.import_linter_cache/
+.env
+docs/reports/
+.playwright-mcp/
+experiments/runs/
+apps/demo-site/variants/*
+!apps/demo-site/variants/.gitkeep
+node_modules/
+playwright-report/

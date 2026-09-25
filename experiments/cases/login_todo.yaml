@@ -1,0 +1,11 @@
+name: login_todo
+start_path: login.html
+goal: "Đăng nhập bằng tài khoản demo/demo, sau đó thêm việc 'Mua sữa' vào danh sách"
+max_steps: 15
+assertions:
+  - id: todo-visible
+    kind: text_visible
+    value: "Mua sữa"
+  - id: on-index
+    kind: url_contains
+    value: "index.html"

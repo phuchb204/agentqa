@@ -1,0 +1,64 @@
+[project]
+name = "agentqa"
+version = "0.1.0"
+description = "AI-agent web testing platform (graduation project)"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "openai>=1.0",
+    "playwright>=1.48",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+agentqa = "agentqa.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "import-linter>=2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["apps/demo-site/tools"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["docs"]
+
+[tool.importlinter]
+root_packages = ["agentqa"]
+
+[[tool.importlinter.contracts]]
+name = "contracts is a leaf"
+type = "forbidden"
+source_modules = ["agentqa.contracts"]
+forbidden_modules = ["agentqa.llm", "agentqa.agent", "agentqa.verify", "agentqa.platform", "agentqa.cli"]
+
+[[tool.importlinter.contracts]]
+name = "llm depends only on contracts"
+type = "forbidden"
+source_modules = ["agentqa.llm"]
+forbidden_modules = ["agentqa.agent", "agentqa.verify", "agentqa.platform", "agentqa.cli"]
+
+[[tool.importlinter.contracts]]
+name = "agent depends only on contracts and llm"
+type = "forbidden"
+source_modules = ["agentqa.agent"]
+forbidden_modules = ["agentqa.verify", "agentqa.platform", "agentqa.cli"]
+
+[[tool.importlinter.contracts]]
+name = "verify depends only on contracts and llm"
+type = "forbidden"
+source_modules = ["agentqa.verify"]
+forbidden_modules = ["agentqa.agent", "agentqa.platform", "agentqa.cli"]

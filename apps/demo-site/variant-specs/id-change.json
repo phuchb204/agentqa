@@ -1,0 +1,9 @@
+{
+  "name": "id-change",
+  "changes": [
+    {"file": "index.html", "before": "id=\"new-todo\"", "after": "id=\"task-input\""},
+    {"file": "index.html", "before": "id=\"add-btn\"", "after": "id=\"create-task\""},
+    {"file": "app.js", "before": "getElementById(\"add-btn\")", "after": "getElementById(\"create-task\")"},
+    {"file": "app.js", "before": "getElementById(\"new-todo\")", "after": "getElementById(\"task-input\")"}
+  ]
+}

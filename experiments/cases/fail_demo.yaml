@@ -1,0 +1,8 @@
+name: fail_demo
+start_path: login.html
+goal: "Đăng nhập bằng demo/demo"
+max_steps: 10
+assertions:
+  - id: impossible
+    kind: text_visible
+    value: "Sản phẩm đã giao"
