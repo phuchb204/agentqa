@@ -111,6 +111,7 @@ class _StubJev:
         self._input_tokens = input_tokens
         self._output_tokens = output_tokens
         self.requests: list[dict] = []
+        self.closed = False
 
     async def decide(self, state, questions):
         self.requests.append({"state": state, "questions": questions})
@@ -123,6 +124,22 @@ class _StubJev:
             output_tokens=self._output_tokens,
             cost=0.000004,
         )
+
+    async def aclose(self):
+        self.closed = True
+
+
+class _CloseAwareLLM:
+    model = "stub"
+
+    def __init__(self):
+        self.closed = False
+
+    async def decide(self, system, user):
+        raise NotImplementedError
+
+    async def aclose(self):
+        self.closed = True
 
 
 class _ErrorJev:
@@ -160,6 +177,7 @@ async def test_cascade_finishes_when_goal_done_high():
     assert result.action.type == "finish"
     assert result.escalated is False
     assert result.calls == 1
+    assert result.cost_usd == pytest.approx(0.000004)
     assert result.model == "jev:typesafe/jev-1.13-20260917"
     assert llm.calls == []
 
@@ -177,6 +195,7 @@ async def test_cascade_escalates_when_stuck():
     assert result.escalated is True
     assert result.action.target == "#fallback"
     assert result.calls == 2
+    assert result.cost_usd == pytest.approx(0.000004)
     assert result.input_tokens == 90
     assert result.output_tokens == 10
     assert result.action.rationale.startswith("escalated:llm reason=stuck=0.90")
@@ -223,6 +242,7 @@ async def test_cascade_fill_uses_llm_value_only():
     assert result.action.value == "demo"
     assert result.escalated is False
     assert result.calls == 2
+    assert result.cost_usd == pytest.approx(0.000004)
     assert result.input_tokens == 90
     assert len(llm.calls) == 1
     assert "PHẦN TỬ CẦN GÕ" in llm.calls[0]
@@ -345,3 +365,17 @@ async def test_cascade_without_candidates_asks_only_goal_and_stuck():
     result = await policy.decide("mục tiêu", snapshot, [])
     assert set(jev.requests[0]["questions"]) == {"goal_done", "stuck"}
     assert result.escalated is True
+
+
+async def test_llm_policy_aclose_delegates_to_adapter():
+    llm = _CloseAwareLLM()
+    await LLMPolicy(llm).aclose()
+    assert llm.closed
+
+
+async def test_cascade_aclose_closes_jev_and_llm():
+    llm = _CloseAwareLLM()
+    jev = _StubJev({})
+    await JevCascadePolicy(jev=jev, llm=llm).aclose()
+    assert jev.closed
+    assert llm.closed

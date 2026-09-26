@@ -14,7 +14,7 @@ from agentqa.agent.policy import (
     LLMPolicy,
     Policy,
 )
-from agentqa.contracts import load_case
+from agentqa.contracts import TestCase, load_case
 from agentqa.llm.jev import JevClient
 from agentqa.llm.openai_adapter import OpenAICompatAdapter
 from agentqa.platform.trace_store import write_trace
@@ -48,6 +48,14 @@ def build_policy() -> Policy:
     raise ValueError(f"unsupported AGENTQA_POLICY: {mode!r} (expected 'llm' or 'jev')")
 
 
+async def _run_case(case: TestCase, *, base_url: str, headless: bool):
+    policy = build_policy()
+    try:
+        return await run_case(case, policy, base_url=base_url, headless=headless, checker=check_all)
+    finally:
+        await policy.aclose()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="agentqa")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -61,10 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     case = load_case(Path(args.case))
-    policy = build_policy()
-    trace = asyncio.run(
-        run_case(case, policy, base_url=args.base_url, headless=not args.headed, checker=check_all)
-    )
+    trace = asyncio.run(_run_case(case, base_url=args.base_url, headless=not args.headed))
     path = write_trace(trace, Path(args.out))
     print(f"{trace.status.upper()} {trace.case_name} -> {path}")
     return 0 if trace.status == "passed" else 1

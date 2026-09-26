@@ -130,3 +130,6 @@ class OpenAICompatAdapter:
         if self.api == "responses":
             return await self._decide_responses(system, user)
         return await self._decide_chat(system, user)
+
+    async def aclose(self) -> None:
+        await self._client.close()

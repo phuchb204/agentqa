@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from playwright.async_api import Page, async_playwright
 
+from agentqa import __version__
 from agentqa.agent.executor import ActionExecutionError, execute
 from agentqa.agent.observation import observe
 from agentqa.agent.policy import Policy
@@ -19,8 +20,6 @@ from agentqa.contracts import (
 )
 
 Checker = Callable[[Page, list[AssertionSpec]], Awaitable[list[AssertionResult]]]
-
-APP_VERSION = "0.1.0"
 
 
 def _now() -> str:
@@ -42,6 +41,7 @@ async def run_case(
     assertions: list[AssertionResult] = []
     history: list[str] = []
     input_tokens = output_tokens = llm_calls = 0
+    cost_usd = 0.0
     status = "failed"
     error = ""
 
@@ -61,6 +61,7 @@ async def run_case(
                 llm_calls += result.calls
                 input_tokens += result.input_tokens
                 output_tokens += result.output_tokens
+                cost_usd += result.cost_usd
                 if result.action.type == "finish":
                     finished = True
                     break
@@ -93,6 +94,8 @@ async def run_case(
                 and all(s.ok for s in steps)
             )
             status = "passed" if passed else "failed"
+            if not finished and status == "failed":
+                error = f"max_steps exhausted ({case.max_steps})"
         except Exception as exc:  # noqa: BLE001
             status = "error"
             error = str(exc)
@@ -111,8 +114,9 @@ async def run_case(
             llm_calls=llm_calls,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            cost_usd=cost_usd,
             duration_s=round(time.perf_counter() - t0, 3),
         ),
-        versions=RunVersions(app=APP_VERSION, model=policy.model, prompt=policy.prompt_version),
+        versions=RunVersions(app=__version__, model=policy.model, prompt=policy.prompt_version),
         error=error,
     )

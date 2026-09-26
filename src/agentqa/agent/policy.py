@@ -27,6 +27,7 @@ class PolicyResult(BaseModel):
     action: Action
     input_tokens: int = 0
     output_tokens: int = 0
+    cost_usd: float = 0.0
     calls: int = 1
     model: str = ""
     escalated: bool = False
@@ -40,6 +41,8 @@ class Policy(Protocol):
     async def decide(
         self, goal: str, snapshot: ObservationSnapshot, history: list[str]
     ) -> PolicyResult: ...
+
+    async def aclose(self) -> None: ...
 
 
 class LLMPolicy:
@@ -59,6 +62,9 @@ class LLMPolicy:
             calls=1,
             model=self._llm.model,
         )
+
+    async def aclose(self) -> None:
+        await self._llm.aclose()
 
 
 class Candidate(BaseModel):
@@ -176,6 +182,10 @@ class JevCascadePolicy:
         self._max_options = max_options
         self.model = f"jev:{jev.model}+llm:{llm.model}"
         self.prompt_version = f"{PROMPT_VERSION}+jevq{JEV_QUESTION_SET_VERSION}"
+
+    async def aclose(self) -> None:
+        await self._jev.aclose()
+        await self._llm.aclose()
 
     async def decide(
         self, goal: str, snapshot: ObservationSnapshot, history: list[str]
@@ -338,6 +348,7 @@ class JevCascadePolicy:
             action=action,
             input_tokens=jev_result.input_tokens + value_result.input_tokens,
             output_tokens=jev_result.output_tokens + value_result.output_tokens,
+            cost_usd=jev_result.cost,
             calls=2,
             model=f"jev:{jev_result.model}+llm:{self._llm.model}",
             confidence=confidence,
@@ -381,6 +392,7 @@ class JevCascadePolicy:
             action=llm_result.action.model_copy(update={"rationale": rationale}),
             input_tokens=jev_input + llm_result.input_tokens + extra_input,
             output_tokens=jev_output + llm_result.output_tokens + extra_output,
+            cost_usd=jev_result.cost if jev_result is not None else 0.0,
             calls=calls,
             model=model,
             escalated=True,
@@ -414,6 +426,7 @@ def _to_result(
         action=action,
         input_tokens=jev_result.input_tokens,
         output_tokens=jev_result.output_tokens,
+        cost_usd=jev_result.cost,
         calls=1,
         model=f"jev:{jev_result.model}",
         confidence=confidence,
