@@ -1,8 +1,11 @@
 from pathlib import Path
 
+import pytest
+
 from agentqa.agent.loop import run_case
 from agentqa.agent.policy import JevCascadePolicy, LLMPolicy
-from agentqa.contracts import Action, AssertionSpec, TestCase, load_case
+from agentqa.contracts import Action, AssertionSpec, load_case
+from agentqa.contracts import TestCase as Case
 from agentqa.llm.fake import FakeLLM
 from agentqa.llm.jev import JevAnswer, JevResult
 from agentqa.verify.checker import check_all
@@ -21,7 +24,7 @@ def _login_script() -> list[Action]:
     ]
 
 
-def _login_case() -> TestCase:
+def _login_case() -> Case:
     return load_case(REPO_ROOT / "experiments" / "cases" / "login_todo.yaml")
 
 
@@ -59,6 +62,21 @@ async def test_run_case_marks_failed_step_but_continues(demo_server):
     assert trace.steps[0].ok is False
     assert trace.steps[0].error is not None
     assert trace.status == "failed"
+
+
+async def test_run_case_reports_max_steps_exhausted(demo_server):
+    policy = LLMPolicy(
+        FakeLLM(
+            [
+                Action(type="click", target="#login-btn"),
+                Action(type="click", target="#login-btn"),
+            ]
+        )
+    )
+    case = _login_case().model_copy(update={"max_steps": 2})
+    trace = await run_case(case, policy, base_url=demo_server, checker=check_all)
+    assert trace.status == "failed"
+    assert "max_steps" in trace.error
 
 
 class _GoalDoneJev:
@@ -101,6 +119,7 @@ async def test_run_case_cascade_finishes_when_goal_done(demo_server):
     assert trace.status == "failed"
     assert trace.metrics.llm_calls == 1
     assert trace.metrics.input_tokens == 80
+    assert trace.metrics.cost_usd == pytest.approx(0.0000034)
     assert trace.versions.model == "jev:typesafe/jev-1.13+llm:fake"
     assert trace.versions.prompt == "v1+jevq1"
 
@@ -112,4 +131,5 @@ async def test_run_case_cascade_escalates_and_passes(demo_server):
     assert trace.metrics.llm_calls == 12
     assert trace.metrics.input_tokens == 540
     assert trace.metrics.output_tokens == 60
+    assert trace.metrics.cost_usd == pytest.approx(0.0000204)
     assert trace.steps[0].action.rationale.startswith("escalated:llm")

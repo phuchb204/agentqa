@@ -167,3 +167,16 @@ def test_from_env_reads_responses_api(monkeypatch):
 def test_adapter_rejects_unknown_api_mode():
     with pytest.raises(ValueError):
         OpenAICompatAdapter(base_url="http://stub", api_key="k", model="m1", api="bogus")
+
+
+async def test_aclose_closes_underlying_client():
+    adapter = OpenAICompatAdapter(base_url="http://stub", api_key="k", model="m1")
+    closed = []
+
+    class _StubClient:
+        async def close(self):
+            closed.append(True)
+
+    adapter._client = _StubClient()
+    await adapter.aclose()
+    assert closed == [True]

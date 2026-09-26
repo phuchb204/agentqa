@@ -36,7 +36,7 @@ cli  ──►  platform (trace store)
 | `StepResult` | `index`, `action`, `ok`, `error`, `duration_ms`, `input_tokens`, `output_tokens`, `observation_bytes` |
 | `AssertionSpec` / `AssertionResult` | `id`, `kind` (text_visible/url_contains), `value`, `description` / `assertion_id`, `status`, `detail` |
 | `MutationSpec` / `MutationChange` | `id`, `variant`, `description`, `changes`, `ground_truth` |
-| `RunMetrics` / `RunVersions` | `llm_calls`, `input_tokens`, `output_tokens`, `duration_s` / `app`, `model`, `prompt` |
+| `RunMetrics` / `RunVersions` | `llm_calls`, `input_tokens`, `output_tokens`, `cost_usd`, `duration_s` / `app`, `model`, `prompt` |
 | `RunTrace` | `run_id`, `case_name`, `status`, `started_at`, `finished_at`, `steps`, `assertions`, `metrics`, `versions`, `error` |
 | `TestCase` | `name`, `start_path`, `goal`, `max_steps`, `assertions` (đọc từ YAML bằng `load_case`) |
 

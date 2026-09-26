@@ -19,3 +19,6 @@ class FakeLLM:
             input_tokens=self._input_tokens,
             output_tokens=self._output_tokens,
         )
+
+    async def aclose(self) -> None:
+        return None

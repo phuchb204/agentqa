@@ -5,6 +5,23 @@ Mọi thay đổi đáng chú ý của AgentQA được ghi tại đây.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-25
+
+### Added
+
+- `RunMetrics.cost_usd` (contracts v1.1, additive) và cộng dồn chi phí Jev theo từng bước vào trace — xem `docs/adr/0002-cost-usd-in-run-metrics.md`.
+
+### Changed
+
+- Version app `0.1.1`; `run_case` lấy version từ `agentqa.__version__`.
+
+### Fixed
+
+- Demo-site kiểm tra đúng tài khoản `demo/demo`; sai thì hiển thị lỗi thay vì chuyển trang.
+- Đóng HTTP client (OpenAI, Jev) sau mỗi lần chạy qua `policy.aclose()`.
+- Ghi lý do `max_steps exhausted` vào `trace.error` khi hết ngân sách bước.
+- Bỏ cảnh báo `PytestCollectionWarning` do tên `TestCase` trong test.
+
 ## [0.1.0] - 2026-09-25
 
 ### Added
