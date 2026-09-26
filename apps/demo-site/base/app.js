@@ -22,8 +22,15 @@ document.addEventListener("DOMContentLoaded", () => {
   if (loginForm) {
     loginForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      localStorage.setItem(STORAGE_USER, document.getElementById("username").value);
-      window.location.href = "index.html";
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      const error = document.getElementById("login-error");
+      if (username === "demo" && password === "demo") {
+        localStorage.setItem(STORAGE_USER, username);
+        window.location.href = "index.html";
+        return;
+      }
+      error.textContent = "Sai tên đăng nhập hoặc mật khẩu";
     });
   }
   const addBtn = document.getElementById("add-btn");
