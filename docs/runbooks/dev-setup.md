@@ -56,7 +56,7 @@ Terminal 2 — chạy case:
 uv run --env-file .env agentqa run --case experiments/cases/login_todo.yaml --base-url http://127.0.0.1:8000
 ```
 
-Thêm `--headed` nếu muốn nhìn trình duyệt chạy.
+Thêm `--headed` nếu muốn nhìn trình duyệt chạy. Bộ case hiện có và schema YAML: xem `docs/runbooks/cases.md`.
 
 ## 6. Đọc kết quả
 
