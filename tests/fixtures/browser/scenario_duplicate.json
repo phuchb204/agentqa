@@ -1,0 +1,9 @@
+{
+  "seed": "duplicate_rejected",
+  "item_name": "Việc trùng",
+  "expected": {
+    "label_count": 1,
+    "item_created_events": 0,
+    "duplicate_rejected_events": 1
+  }
+}

@@ -1,7 +1,8 @@
 # Dependency inventory
 
 - Ngày: 2026-10-09
-- Trạng thái: Inventory của gói 01 (P01–P03) và gói 02 (P04–P06); version chính xác pin trong `uv.lock` và `pnpm-lock.yaml`
+- Trạng thái: Inventory của gói 01 (P01–P03), gói 02 (P04–P06) và gói 03 (P07–P11); version chính xác pin trong `uv.lock` và `pnpm-lock.yaml`
+- Cập nhật gói 03: playwright/uvicorn/python-multipart (P07); pillow (P08)
 - Nguồn quyết định: [architecture.md](architecture.md) §3, [rebuild-plan.md](plans/rebuild-plan.md) §5/§8, [01-foundation.md](plans/01-foundation.md), [02-data-and-trust.md](plans/02-data-and-trust.md)
 
 ## 1. Toolchain
@@ -27,6 +28,10 @@
 | alembic | 1.20.0 | Migration runner lock/version; migration 0001 schema core, 0002 query indexes (P04, P06) |
 | pwdlib | 0.3.1 | Argon2id password hashing qua thư viện maintained (api-and-security §5, P05) |
 | cryptography | 46.0.7 | AES-256-GCM envelope credential: data key/nonce/AAD, master key ngoài DB (api-and-security §6, P05) |
+| playwright | 1.63.0 | Browser thật cho Taskboard fixture và adapter async read/action (P07–P08) |
+| uvicorn | 0.54.0 | HTTP server chạy Taskboard fixture và API runtime (P07, P11) |
+| python-multipart | 0.0.32 | FastAPI form parsing cho Taskboard login/CRUD (P07) |
+| pillow | 12.3.0 | Mask ảnh và image canary pixel-based cho SafeEvidenceService (P08) |
 
 ## 3. Python — dev
 

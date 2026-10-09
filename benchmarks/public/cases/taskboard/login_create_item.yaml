@@ -1,0 +1,89 @@
+schema_version: case/1
+logical_key: taskboard_create_item
+title: Đăng nhập và tạo việc mới
+goal: Tạo một việc mới và xác nhận nó xuất hiện đúng một lần trong danh sách
+requirements: [create_item]
+
+source_defs:
+  create_item:
+    source_content_digest: 1b37b1a900f62fb258ea067be0549ac1521129604f18dc316566c10fefe057d0
+    anchor: {type: section, value: create-item}
+    quote_digest: 99030afd9733cdd28fd467f6139c23619d4846791e829a44bb789867b2ee8aa3
+    provenance: user
+
+postcondition_defs:
+  authenticated:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: task_page_heading, role: heading, name: Danh sách việc}
+      expected: {kind: literal, value: true}
+  item_created:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: count_equals
+      target:
+        intent: created_item_row
+        role: listitem
+        entity_scope: {field: text, value: {kind: parameter, name: item_name, type: string}}
+      expected: {kind: literal, value: 1}
+
+parameter_defs:
+  item_name: {type: string, required: true}
+
+fixture_refs: [taskboard@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: taskboard.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, locators: [{kind: label, value: Mật khẩu}]}
+    value: {kind: secret, credential_ref: taskboard.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [authenticated]
+  - id: item_name
+    kind: action
+    operation: fill
+    target: {intent: new_item, role: textbox, name: Việc mới}
+    value: {kind: parameter, name: item_name, type: string}
+    side_effect: reversible
+  - id: add_item
+    kind: action
+    operation: click
+    target: {intent: create_item, role: button, name: Thêm việc}
+    side_effect: external_write
+    postconditions: [item_created]
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: item_exists_once
+        required: true
+        target:
+          intent: created_item_row
+          role: listitem
+          entity_scope: {field: text, value: {kind: parameter, name: item_name, type: string}}
+        comparator: count_equals
+        expected: {kind: literal, value: 1}
+        source_refs: [create_item]
+
+completion:
+  required_nodes: [add_item, result]
+  required_assertions: [item_exists_once]

@@ -1,0 +1,106 @@
+schema_version: case/1
+logical_key: taskboard_async_create_unknown
+title: Tạo việc không chờ có kết quả chưa xác định
+goal: Tiến trình trả về khi đang xử lý và kết quả chỉ xác định khi tiến trình hoàn tất
+requirements: [async_create]
+
+source_defs:
+  async_create:
+    source_content_digest: 1b37b1a900f62fb258ea067be0549ac1521129604f18dc316566c10fefe057d0
+    anchor: {type: section, value: async-create}
+    quote_digest: 0f9ff84f6026b2fda6cdae4ee32e2019e4e2cd3820e6d4a8c0841655ac17524c
+    provenance: user
+
+postcondition_defs:
+  authenticated:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: task_page_heading, role: heading, name: Danh sách việc}
+      expected: {kind: literal, value: true}
+  job_submitted:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: job_pending, role: paragraph, name: Đang xử lý}
+      expected: {kind: literal, value: true}
+  item_created:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: count_equals
+      target:
+        intent: created_item_row
+        role: listitem
+        entity_scope: {field: text, value: {kind: parameter, name: item_name, type: string}}
+      expected: {kind: literal, value: 1}
+
+parameter_defs:
+  item_name: {type: string, required: true}
+
+fixture_refs: [taskboard@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: taskboard.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, locators: [{kind: label, value: Mật khẩu}]}
+    value: {kind: secret, credential_ref: taskboard.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [authenticated]
+  - id: item_name
+    kind: action
+    operation: fill
+    target: {intent: new_item, role: textbox, name: Việc mới}
+    value: {kind: parameter, name: item_name, type: string}
+    side_effect: reversible
+  - id: add_item_async
+    kind: action
+    operation: click
+    target: {intent: create_item_async, role: button, name: Thêm việc không chờ}
+    side_effect: external_write
+    postconditions: [job_submitted]
+  - id: wait_settled
+    kind: action
+    operation: wait
+    wait: {timeout_ms: 5000, poll_ms: 100}
+    side_effect: read
+    postconditions: [item_created]
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: job_still_pending
+        required: false
+        target: {intent: job_pending, role: paragraph, name: Đang xử lý}
+        comparator: exists
+      - id: item_exists_once
+        required: true
+        target:
+          intent: created_item_row
+          role: listitem
+          entity_scope: {field: text, value: {kind: parameter, name: item_name, type: string}}
+        comparator: count_equals
+        expected: {kind: literal, value: 1}
+        source_refs: [async_create]
+
+completion:
+  required_nodes: [add_item_async, wait_settled, result]
+  required_assertions: [item_exists_once]

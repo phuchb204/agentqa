@@ -335,6 +335,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submit_run_api_v1_workspaces__workspace_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_run_state_api_v1_workspaces__workspace_id__runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/controls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_controls_api_v1_workspaces__workspace_id__runs__run_id__controls_get"];
+        put?: never;
+        post: operations["request_control_api_v1_workspaces__workspace_id__runs__run_id__controls_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_events_api_v1_workspaces__workspace_id__runs__run_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/events/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["stream_events_api_v1_workspaces__workspace_id__runs__run_id__events_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_run_result_api_v1_workspaces__workspace_id__runs__run_id__result_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/{kind}s": {
         parameters: {
             query?: never;
@@ -411,6 +507,32 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        ControlAction: "pause" | "resume" | "cancel";
+        ControlListEntry: {
+            action: string;
+            control_id: string;
+            effective_at?: string | null;
+            effective_reason?: string | null;
+            requested_at: string;
+        };
+        ControlListResponse: {
+            controls: components["schemas"]["ControlListEntry"][];
+        };
+        ControlRequestBody: {
+            action: components["schemas"]["ControlAction"];
+            reason?: string | null;
+        };
+        ControlResponse: {
+            control_id: string;
+            control_revision: number;
+        };
+        ControlStateResponse: {
+            action: string;
+            control_id: string;
+            effective_at?: string | null;
+            effective_reason?: string | null;
+            requested_at: string;
+        };
         DraftPatchRequest: {
             content: {
                 [key: string]: unknown;
@@ -445,6 +567,12 @@ export interface components {
             message: string;
             request_id?: string | null;
             retryable: boolean;
+        };
+        ExecutionStateResponse: {
+            execution_id: string;
+            logical_key: string;
+            status: string;
+            verdict?: string | null;
         };
         FieldErrorModel: {
             code: components["schemas"]["ErrorCode"];
@@ -511,11 +639,50 @@ export interface components {
             supersedes?: string | null;
         };
         Role: "owner" | "editor" | "runner" | "viewer";
+        RunResultResponse: {
+            executions: components["schemas"]["ExecutionStateResponse"][];
+            gate?: string | null;
+            reasons: string[];
+            run_id: string;
+            status: string;
+            terminal: boolean;
+            verdict?: string | null;
+        };
+        RunStateResponse: {
+            controls: components["schemas"]["ControlStateResponse"][];
+            executions: components["schemas"]["ExecutionStateResponse"][];
+            gate?: string | null;
+            last_run_seq: number;
+            reasons: string[];
+            run_id: string;
+            snapshot_digest?: string | null;
+            status: string;
+            verdict?: string | null;
+        };
         SessionResponse: {
             csrf_token?: string | null;
             expires_at: string;
             user_id: string;
             username: string;
+        };
+        SubmitRunRequest: {
+            budgets: {
+                [key: string]: number;
+            };
+            case_revision_ids: string[];
+            environment_revision_id?: string | null;
+            gate_profile: string;
+            idempotency_key?: string | null;
+            policy: string;
+            provided_capabilities: string[];
+        };
+        SubmitRunResponse: {
+            blocked: boolean;
+            blocked_reasons: string[];
+            planned_executions: number;
+            run_id: string;
+            snapshot_digest: string;
+            status: string;
         };
         TokenCreateRequest: {
             expires_at?: string | null;
@@ -1380,6 +1547,230 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PromotionResponse"][];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_run_api_v1_workspaces__workspace_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRunRequest"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitRunResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_state_api_v1_workspaces__workspace_id__runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunStateResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_controls_api_v1_workspaces__workspace_id__runs__run_id__controls_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlListResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_control_api_v1_workspaces__workspace_id__runs__run_id__controls_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ControlRequestBody"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_workspaces__workspace_id__runs__run_id__events_get: {
+        parameters: {
+            query?: {
+                cursor?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_events_api_v1_workspaces__workspace_id__runs__run_id__events_stream_get: {
+        parameters: {
+            query?: {
+                cursor?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_result_api_v1_workspaces__workspace_id__runs__run_id__result_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResultResponse"];
                 };
             };
             422: {

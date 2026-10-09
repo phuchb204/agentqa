@@ -6,8 +6,11 @@ from fastapi.responses import JSONResponse
 
 from agentqa.contracts.errors import AgentQAValidationError, ErrorCode
 from agentqa.platform.api.auth import router as auth_router
+from agentqa.platform.api.controls import router as controls_router
 from agentqa.platform.api.error_models import ApiError, ErrorResponse, FieldErrorModel, HealthResponse
+from agentqa.platform.api.events import router as events_router
 from agentqa.platform.api.revisions import router as revisions_router
+from agentqa.platform.api.runs import router as runs_router
 from agentqa.platform.api.runtime import PlatformRuntime
 from agentqa.platform.api.schemas import (
     OPENAPI_PATH,
@@ -105,6 +108,9 @@ def create_application(runtime: PlatformRuntime | None = None) -> FastAPI:
     _install_handlers(app)
     app.include_router(auth_router)
     app.include_router(workspaces_router)
+    app.include_router(runs_router)
+    app.include_router(events_router)
+    app.include_router(controls_router)
     app.include_router(revisions_router)
     app.add_api_route("/health/live", _health_live, methods=["GET"], response_model=HealthResponse)
     app.add_api_route("/api/v1/schemas", _list_schemas, methods=["GET"], response_model=None)

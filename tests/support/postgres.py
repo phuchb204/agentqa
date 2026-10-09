@@ -193,3 +193,54 @@ async def seed_execution(
             .returning(tables.executions.c.id)
         )
         return result.scalar_one()
+
+
+async def seed_attempt(
+    engines: dict[str, AsyncEngine],
+    *,
+    principal_id: UUID,
+    workspace_id: UUID,
+    execution_id: UUID,
+    attempt_no: int = 1,
+    fence_epoch: int = 1,
+) -> UUID:
+    async with scoped_transaction(
+        engines[ROLE_WORKER], principal_id=principal_id, workspace_id=workspace_id
+    ) as session:
+        result = await session.execute(
+            sa.insert(tables.attempts)
+            .values(
+                workspace_id=workspace_id,
+                execution_id=execution_id,
+                attempt_no=attempt_no,
+                status="running",
+                fence_epoch=fence_epoch,
+            )
+            .returning(tables.attempts.c.id)
+        )
+        return result.scalar_one()
+
+
+async def seed_job(
+    engines: dict[str, AsyncEngine],
+    *,
+    principal_id: UUID,
+    workspace_id: UUID,
+    run_id: UUID,
+    execution_id: UUID,
+    kind: str = "browser_run",
+    state: str = "queued",
+) -> UUID:
+    async with scoped_transaction(engines[ROLE_API], principal_id=principal_id, workspace_id=workspace_id) as session:
+        result = await session.execute(
+            sa.insert(tables.jobs)
+            .values(
+                workspace_id=workspace_id,
+                run_id=run_id,
+                execution_id=execution_id,
+                kind=kind,
+                state=state,
+            )
+            .returning(tables.jobs.c.id)
+        )
+        return result.scalar_one()

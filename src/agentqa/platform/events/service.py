@@ -160,6 +160,7 @@ class EventService:
                         tables.run_events.c.execution_seq,
                         tables.run_events.c.type,
                         tables.run_events.c.payload_month,
+                        tables.run_events.c.summary,
                     )
                     .where(
                         tables.run_events.c.workspace_id == workspace_id,
@@ -178,6 +179,7 @@ class EventService:
                 "execution_seq": row.execution_seq,
                 "type": row.type,
                 "payload_month": row.payload_month,
+                "summary": row.summary,
             }
             for row in rows
         ]

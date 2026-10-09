@@ -1,0 +1,9 @@
+{
+  "seed": "async_unknown",
+  "item_name": "Việc async A",
+  "expected": {
+    "label_count": 1,
+    "async_submitted_events": 1,
+    "async_settled_events": 1
+  }
+}

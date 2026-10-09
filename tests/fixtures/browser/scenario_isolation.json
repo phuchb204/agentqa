@@ -1,0 +1,7 @@
+{
+  "seed": "isolation",
+  "label": "Việc namespace A",
+  "expected": {
+    "item_count": 1
+  }
+}

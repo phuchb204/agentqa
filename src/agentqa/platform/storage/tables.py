@@ -18,7 +18,8 @@ REVISION_TABLES = (
     "dataset_revisions",
     "fixture_revisions",
 )
-APPEND_ONLY_TABLES = ("run_events", "run_snapshots", *REVISION_TABLES)
+APPEND_ONLY_TABLES = ("run_events", "run_snapshots", "command_receipts", *REVISION_TABLES)
+BROWSER_COMMAND_TABLES = ("browser_sessions", "action_commands", "command_receipts")
 PARTITIONED_PAYLOAD_TABLES = ("run_event_payloads", "model_call_payloads")
 PARTITION_START = "2026-01-01"
 PARTITION_MONTHS = 18
@@ -445,6 +446,117 @@ resource_slots = sa.Table(
     sa.CheckConstraint("reserved >= 0 AND reserved <= capacity", name="ck_resource_slots_reservation"),
 )
 
+browser_sessions = sa.Table(
+    "browser_sessions",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("run_id", sa.Uuid, nullable=False),
+    sa.Column("attempt_id", sa.Uuid, nullable=False),
+    sa.Column("session_key", sa.Text, nullable=False),
+    sa.Column("supervisor_id", sa.Text, nullable=False),
+    sa.Column("fence_epoch", sa.BigInteger, nullable=False, server_default=sa.text("0")),
+    sa.Column("state", sa.Text, nullable=False, server_default=sa.text("'open'")),
+    sa.Column("control_revision", sa.Integer, nullable=False, server_default=sa.text("0")),
+    sa.Column("scene_version", sa.Integer, nullable=False, server_default=sa.text("1")),
+    sa.Column("heartbeat_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    sa.Column("closed_reason", sa.Text),
+    _created_col(),
+    sa.Column("closed_at", sa.DateTime(timezone=True)),
+    _ws_id_unique("browser_sessions"),
+    sa.UniqueConstraint("workspace_id", "session_key", name="uq_browser_sessions_workspace_key"),
+    sa.CheckConstraint("state IN ('open', 'closing', 'closed', 'quarantined')", name="ck_browser_sessions_state"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], name="fk_browser_sessions_run"
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "attempt_id"],
+        ["attempts.workspace_id", "attempts.id"],
+        name="fk_browser_sessions_attempt",
+    ),
+)
+
+action_commands = sa.Table(
+    "action_commands",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("run_id", sa.Uuid, nullable=False),
+    sa.Column("attempt_id", sa.Uuid, nullable=False),
+    sa.Column("session_id", sa.Uuid, nullable=False),
+    sa.Column("command_id", sa.Uuid, nullable=False),
+    sa.Column("fence_epoch", sa.BigInteger, nullable=False),
+    sa.Column("expected_observation_version", sa.Integer, nullable=False, server_default=sa.text("0")),
+    sa.Column("control_revision", sa.Integer, nullable=False, server_default=sa.text("0")),
+    sa.Column("operation", sa.Text, nullable=False),
+    sa.Column("payload_digest", sa.Text, nullable=False),
+    sa.Column("payload", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("state", sa.Text, nullable=False, server_default=sa.text("'prepared'")),
+    sa.Column("reject_reason", sa.Text),
+    sa.Column("side_effect", sa.Text, nullable=False, server_default=sa.text("'unknown'")),
+    _created_col(),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    _ws_id_unique("action_commands"),
+    sa.UniqueConstraint("workspace_id", "command_id", name="uq_action_commands_workspace_command"),
+    sa.CheckConstraint(
+        "state IN ('prepared', 'accepted', 'dispatched', 'settled', 'unknown', 'rejected')",
+        name="ck_action_commands_state",
+    ),
+    sa.CheckConstraint(
+        "side_effect IN ('read', 'reversible', 'external_write', 'unknown')",
+        name="ck_action_commands_side_effect",
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], name="fk_action_commands_run"
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "attempt_id"],
+        ["attempts.workspace_id", "attempts.id"],
+        name="fk_action_commands_attempt",
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "session_id"],
+        ["browser_sessions.workspace_id", "browser_sessions.id"],
+        name="fk_action_commands_session",
+    ),
+)
+
+command_receipts = sa.Table(
+    "command_receipts",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("command_id", sa.Uuid, nullable=False),
+    sa.Column("session_id", sa.Uuid, nullable=False),
+    sa.Column("state", sa.Text, nullable=False),
+    sa.Column("outcome", sa.Text, nullable=False),
+    sa.Column("fence_epoch", sa.BigInteger, nullable=False),
+    sa.Column("input_digest", sa.Text, nullable=False),
+    sa.Column("evidence", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("reason", sa.Text),
+    _created_col(),
+    _ws_id_unique("command_receipts"),
+    sa.UniqueConstraint("workspace_id", "command_id", "state", name="uq_command_receipts_command_state"),
+    sa.CheckConstraint(
+        "state IN ('accepted', 'dispatched', 'settled', 'rejected', 'unknown')",
+        name="ck_command_receipts_state",
+    ),
+    sa.CheckConstraint(
+        "outcome IN ('succeeded', 'rejected', 'failed', 'unknown')",
+        name="ck_command_receipts_outcome",
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "command_id"],
+        ["action_commands.workspace_id", "action_commands.command_id"],
+        name="fk_command_receipts_command",
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "session_id"],
+        ["browser_sessions.workspace_id", "browser_sessions.id"],
+        name="fk_command_receipts_session",
+    ),
+)
+
 budget_reservations = sa.Table(
     "budget_reservations",
     metadata,
@@ -708,7 +820,14 @@ WORKSPACE_SCOPED_TABLES: tuple[str, ...] = tuple(
 RLS_TABLE_NAMES: tuple[str, ...] = tuple(name for name in WORKSPACE_SCOPED_TABLES if name != "model_call_payloads")
 
 API_SELECT_ROLES = ("agentqa_api", "agentqa_worker", "agentqa_supervisor", "agentqa_evaluator")
-SUPERVISOR_READ_TABLES = ("runs", "executions", "run_events", "run_controls")
+SUPERVISOR_READ_TABLES = (
+    "runs",
+    "executions",
+    "attempts",
+    "run_events",
+    "run_controls",
+    *BROWSER_COMMAND_TABLES,
+)
 EVALUATOR_READ_TABLES = ("runs", "executions", "run_events", "assertion_results", "artifacts")
 
 API_INSERT_TABLES = (
@@ -776,6 +895,8 @@ API_DELETE_TABLES = ("memberships",)
 WORKER_INSERT_TABLES = (
     "attempts",
     "worker_leases",
+    "action_commands",
+    "resource_slots",
     "run_events",
     "run_event_payloads",
     "assertion_results",
@@ -800,7 +921,8 @@ WORKER_UPDATE_TABLES = (
     "outbox_deliveries",
     "resource_slots",
 )
-SUPERVISOR_INSERT_TABLES = ("run_events", "run_controls")
+SUPERVISOR_INSERT_TABLES = ("run_events", "run_controls", *BROWSER_COMMAND_TABLES)
+SUPERVISOR_UPDATE_TABLES = ("action_commands", "browser_sessions", "run_controls", "runs", "executions")
 EVALUATOR_INSERT_TABLES: tuple[str, ...] = ()
 EVALUATOR_UPDATE_TABLES: tuple[str, ...] = ()
 
@@ -879,6 +1001,7 @@ def _create_triggers(connection: sa.Connection) -> None:
         )
     for table in REVISION_TABLES:
         connection.execute(sa.text(f"DROP TRIGGER IF EXISTS {table}_append_only ON {table}"))
+        connection.execute(sa.text(f"DROP TRIGGER IF EXISTS {table}_guard ON {table}"))
         connection.execute(
             sa.text(
                 f"CREATE TRIGGER {table}_guard BEFORE UPDATE OR DELETE ON {table} "
@@ -970,6 +1093,7 @@ def _grant_privileges(connection: sa.Connection) -> None:
     _grant(connection, "agentqa_worker", "UPDATE", WORKER_UPDATE_TABLES)
     _grant(connection, "agentqa_supervisor", "SELECT", SUPERVISOR_READ_TABLES)
     _grant(connection, "agentqa_supervisor", "INSERT", SUPERVISOR_INSERT_TABLES)
+    _grant(connection, "agentqa_supervisor", "UPDATE", SUPERVISOR_UPDATE_TABLES)
     _grant(connection, "agentqa_evaluator", "SELECT", EVALUATOR_READ_TABLES)
     _grant(connection, "agentqa_evaluator", "INSERT", EVALUATOR_INSERT_TABLES)
     _grant(connection, "agentqa_evaluator", "UPDATE", EVALUATOR_UPDATE_TABLES)
@@ -980,6 +1104,15 @@ def create_core_schema(connection: sa.Connection) -> None:
     _create_functions(connection)
     _create_triggers(connection)
     _create_partitions(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_browser_command_schema(connection: sa.Connection) -> None:
+    for table_name in BROWSER_COMMAND_TABLES:
+        metadata.tables[table_name].create(connection, checkfirst=True)
+    _create_functions(connection)
+    _create_triggers(connection)
     _enable_rls(connection)
     _grant_privileges(connection)
 

@@ -1,0 +1,22 @@
+fixture_id: taskboard
+version: 1
+seeds:
+  success:
+    items: []
+    duplicate_policy: allow
+  duplicate_rejected:
+    items:
+      - label: Việc trùng
+    duplicate_policy: reject
+  async_unknown:
+    items: []
+    duplicate_policy: allow
+  isolation:
+    items:
+      - label: Việc namespace A
+    duplicate_policy: allow
+  wrong_entity:
+    items:
+      - label: Việc giống nhau
+      - label: Việc giống nhau
+    duplicate_policy: allow

@@ -1,0 +1,83 @@
+schema_version: case/1
+logical_key: taskboard_duplicate_label_rejected
+title: Tạo việc trùng nhãn bị từ chối
+goal: Nhãn đã tồn tại bị từ chối và danh sách không thêm việc mới
+requirements: [duplicate_label]
+
+source_defs:
+  duplicate_label:
+    source_content_digest: 1b37b1a900f62fb258ea067be0549ac1521129604f18dc316566c10fefe057d0
+    anchor: {type: section, value: duplicate-label}
+    quote_digest: a371b7f25f528eece09c9cb7e8e0059c335655b64a9a510e18e7990971129000
+    provenance: user
+
+postcondition_defs:
+  authenticated:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: task_page_heading, role: heading, name: Danh sách việc}
+      expected: {kind: literal, value: true}
+
+parameter_defs:
+  item_name: {type: string, required: true}
+
+fixture_refs: [taskboard@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: taskboard.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, locators: [{kind: label, value: Mật khẩu}]}
+    value: {kind: secret, credential_ref: taskboard.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [authenticated]
+  - id: item_name
+    kind: action
+    operation: fill
+    target: {intent: new_item, role: textbox, name: Việc mới}
+    value: {kind: parameter, name: item_name, type: string}
+    side_effect: reversible
+  - id: add_item
+    kind: action
+    operation: click
+    target: {intent: create_item, role: button, name: Thêm việc}
+    side_effect: external_write
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: duplicate_not_created
+        required: true
+        target:
+          intent: created_item_row
+          role: listitem
+          entity_scope: {field: text, value: {kind: parameter, name: item_name, type: string}}
+        comparator: count_equals
+        expected: {kind: literal, value: 1}
+        source_refs: [duplicate_label]
+      - id: duplicate_message
+        required: false
+        target: {intent: duplicate_error, role: paragraph}
+        comparator: contains
+        expected: {kind: literal, value: đã tồn tại}
+
+completion:
+  required_nodes: [add_item, result]
+  required_assertions: [duplicate_not_created]

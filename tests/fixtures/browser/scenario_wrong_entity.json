@@ -1,0 +1,8 @@
+{
+  "seed": "wrong_entity",
+  "same_label": "Việc giống nhau",
+  "expected": {
+    "item_count": 2,
+    "rows_same_label": 2
+  }
+}

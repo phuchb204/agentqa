@@ -1,0 +1,9 @@
+{
+  "seed": "success",
+  "item_name": "Việc mới A",
+  "expected": {
+    "label_count": 1,
+    "item_created_events": 1,
+    "duplicate_rejected_events": 0
+  }
+}
