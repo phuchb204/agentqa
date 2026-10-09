@@ -1,0 +1,116 @@
+[project]
+name = "agentqa"
+version = "0.1.0"
+description = "Nền tảng kiểm thử web bằng AI agent"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "httpx>=0.27,<1",
+    "pydantic>=2.9,<3",
+    "pyyaml>=6,<7",
+    "rfc8785>=0.1.4,<0.2",
+]
+
+[project.scripts]
+agentqa = "agentqa.platform.cli:main"
+
+[dependency-groups]
+dev = [
+    "import-linter>=2,<3",
+    "jsonschema>=4.23,<5",
+    "pytest>=8.3,<9",
+    "ruff>=0.9,<1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentqa"]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+src = ["src", "tests", "tools"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/agentqa/contracts/*" = ["RUF012"]
+"src/agentqa/platform/api/*" = ["RUF012"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+pythonpath = ["."]
+
+[tool.importlinter]
+root_packages = ["agentqa"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layer composition"
+type = "layers"
+layers = [
+    "agentqa.platform",
+    "agentqa.agent | agentqa.verify",
+    "agentqa.models",
+    "agentqa.contracts",
+]
+
+[[tool.importlinter.contracts]]
+name = "Contracts leaf"
+type = "forbidden"
+source_modules = ["agentqa.contracts"]
+forbidden_modules = [
+    "agentqa.models",
+    "agentqa.agent",
+    "agentqa.verify",
+    "agentqa.platform",
+    "playwright",
+    "sqlalchemy",
+    "fastapi",
+    "uvicorn",
+]
+
+[[tool.importlinter.contracts]]
+name = "Models depends on Contracts only"
+type = "forbidden"
+source_modules = ["agentqa.models"]
+forbidden_modules = [
+    "agentqa.agent",
+    "agentqa.verify",
+    "agentqa.platform",
+    "playwright",
+    "sqlalchemy",
+    "fastapi",
+    "uvicorn",
+]
+
+[[tool.importlinter.contracts]]
+name = "Agent depends on Contracts and Models only"
+type = "forbidden"
+source_modules = ["agentqa.agent"]
+forbidden_modules = ["agentqa.verify", "agentqa.platform"]
+
+[[tool.importlinter.contracts]]
+name = "Verify depends on Contracts only"
+type = "forbidden"
+source_modules = ["agentqa.verify"]
+forbidden_modules = [
+    "agentqa.agent",
+    "agentqa.models",
+    "agentqa.platform",
+    "playwright",
+    "sqlalchemy",
+    "fastapi",
+    "uvicorn",
+]

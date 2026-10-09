@@ -1,0 +1,20 @@
+schema_version: case/1
+logical_key: duplicate_ids
+title: Id trùng
+goal: Kiểm tra unique node id
+requirements: []
+
+nodes:
+  - id: open
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /start}
+    side_effect: read
+  - id: open
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /next}
+    side_effect: read
+
+completion:
+  required_nodes: [open]

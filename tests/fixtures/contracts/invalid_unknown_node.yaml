@@ -1,0 +1,13 @@
+schema_version: case/1
+logical_key: unknown_node
+title: Node không hỗ trợ
+goal: Kiểm tra node lạ
+requirements: []
+
+nodes:
+  - id: teleport
+    kind: teleport
+    destination: /x
+
+completion:
+  required_nodes: [teleport]

@@ -1,0 +1,31 @@
+schema_version: case/1
+logical_key: unsafe_capture
+title: Capture chưa định nghĩa
+goal: Kiểm tra tham chiếu capture
+requirements: []
+
+source_defs:
+  requirement:
+    source_content_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    anchor: {type: section, value: capture}
+    quote_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    provenance: user
+
+nodes:
+  - id: open
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /start}
+    side_effect: read
+  - id: check
+    kind: checkpoint
+    assertions:
+      - id: uses_missing_capture
+        required: true
+        comparator: text_equals
+        expected: {kind: capture, name: never_defined, type: string}
+        source_refs: [requirement]
+
+completion:
+  required_nodes: [open, check]
+  required_assertions: [uses_missing_capture]

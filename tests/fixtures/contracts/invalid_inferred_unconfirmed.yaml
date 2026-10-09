@@ -1,0 +1,31 @@
+schema_version: case/1
+logical_key: inferred_unconfirmed
+title: Nguồn suy luận chưa xác nhận
+goal: Kiểm tra source confirmation
+requirements: []
+
+source_defs:
+  requirement:
+    source_content_digest: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    anchor: {type: section, value: inferred}
+    quote_digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+    provenance: inferred
+
+nodes:
+  - id: open
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /start}
+    side_effect: read
+  - id: check
+    kind: checkpoint
+    assertions:
+      - id: inferred_check
+        required: true
+        comparator: url_path_equals
+        expected: {kind: literal, value: /start}
+        source_refs: [requirement]
+
+completion:
+  required_nodes: [open, check]
+  required_assertions: [inferred_check]

@@ -36,3 +36,24 @@ Tài liệu nền ghi yêu cầu và hướng sản phẩm, không mô tả mộ
 - Không commit `.env`, khóa truy cập hoặc dữ liệu nhạy cảm; không ghi bí mật vào prompt, trace, test hoặc tài liệu.
 - Khi bắt đầu commit: dùng nhánh `feat|fix|chore|docs/<slug>` và Conventional Commits. Không push thẳng `main`, không tự merge; dùng PR và các kiểm tra đã cấu hình.
 - Khi dọn hoặc khởi tạo lại repo, không tự xoá lịch sử Git, tạo commit đầu tiên hoặc gắn remote nếu chưa được yêu cầu.
+
+## Lệnh kiểm tra (gói 01)
+
+Chạy từ repo root; lockfile là nguồn pin phiên bản:
+
+```text
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked lint-imports
+uv run --locked pytest -q
+uv run --locked python tools/export_schemas.py --check
+uv run --locked python tools/check_plan_coverage.py
+pnpm --dir apps/web generate:client:check
+pnpm --dir apps/web lint
+pnpm --dir apps/web format:check
+pnpm --dir apps/web typecheck
+pnpm --dir apps/web test
+pnpm --dir apps/web build
+```
+
+`tools/export_schemas.py` (write mặc định, `--check` read-only) sinh `schemas/`; `apps/web/scripts/generate-client.ts` (`--check`) sinh typed client + Ajv validators. Test không đọc `.env`, không gọi Go/Zen; network guard chặn provider egress.

@@ -2,7 +2,7 @@
 
 Nền tảng kiểm thử web bằng AI agent: biến yêu cầu nghiệp vụ thành ca kiểm thử, thực hiện trên trình duyệt thật, chạy hồi quy, phục hồi định vị và cung cấp kết luận truy được về bằng chứng.
 
-Repo được khởi tạo lại để thiết kế và triển khai từ đầu. Đã có tài liệu nền, cơ sở nghiên cứu, spec sản phẩm, bộ thiết kế hệ thống và implementation plan; chưa có mã nguồn hoặc môi trường thực thi.
+Gói 01 (nền runtime, Contracts/DSL, schema và typed client) đã được triển khai trong repo này; các gói 02–09 của [implementation plan](docs/plans/rebuild-plan.md) chưa triển khai. Trạng thái và commands thực tế xem mục Phát triển bên dưới.
 
 ## Bắt đầu
 
@@ -13,6 +13,28 @@ Repo được khởi tạo lại để thiết kế và triển khai từ đầu
 5. Đọc [thiết kế hệ thống](docs/architecture.md), các thiết kế chi tiết và [truy vết nghiệm thu](docs/design/acceptance-mapping.md).
 6. Đọc [implementation plan](docs/plans/rebuild-plan.md), các gói task và [truy vết nghiệm thu vào plan](docs/plans/acceptance-plan.md).
 7. Triển khai theo dependency/gate của plan sau khi bản plan được chọn làm cơ sở thực thi; các lệnh trong plan chưa tồn tại ở repo hiện tại.
+
+## Phát triển
+
+Yêu cầu: Python 3.13 (uv quản lý), Node theo `engines >=24` (CI pin Node 24), pnpm 10. Các lệnh gate chính (đã cấu hình trong CI):
+
+```text
+uv lock && uv sync --locked
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked lint-imports
+uv run --locked pytest -q
+uv run --locked python tools/export_schemas.py --check
+uv run --locked python tools/check_plan_coverage.py
+pnpm --dir apps/web install --frozen-lockfile
+pnpm --dir apps/web lint
+pnpm --dir apps/web format:check
+pnpm --dir apps/web typecheck
+pnpm --dir apps/web test
+pnpm --dir apps/web build
+```
+
+Dependency và lý do chọn nằm trong [docs/dependencies.md](docs/dependencies.md). Test tự động không gọi model thật; mọi egress tới provider bị network guard chặn trong test.
 
 ## Các quyết định nền tảng
 

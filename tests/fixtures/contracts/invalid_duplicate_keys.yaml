@@ -1,0 +1,16 @@
+schema_version: case/1
+logical_key: duplicate_keys
+title: Tài liệu lỗi
+title: Tài liệu lỗi lần hai
+goal: Kiểm tra duplicate keys
+requirements: []
+
+nodes:
+  - id: open
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /start}
+    side_effect: read
+
+completion:
+  required_nodes: [open]

@@ -1,0 +1,47 @@
+schema_version: case/1
+logical_key: branch_proof
+title: Nhánh thiếu chứng minh
+goal: Kiểm tra incomplete branch proof
+requirements: []
+
+source_defs:
+  requirement:
+    source_content_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    anchor: {type: section, value: branch}
+    quote_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    provenance: user
+
+nodes:
+  - id: open
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /start}
+    side_effect: read
+  - id: decide
+    kind: branch
+    condition:
+      kind: comparison
+      comparator: exists
+      target: {intent: toggle}
+    then_nodes:
+      - id: then_check
+        kind: checkpoint
+        assertions:
+          - id: then_ok
+            required: true
+            comparator: url_path_equals
+            expected: {kind: literal, value: /done}
+            source_refs: [requirement]
+    else_nodes:
+      - id: else_check
+        kind: checkpoint
+        assertions:
+          - id: else_ok
+            required: true
+            comparator: url_path_equals
+            expected: {kind: literal, value: /wait}
+            source_refs: [requirement]
+
+completion:
+  required_nodes: [open, else_check]
+  required_assertions: [then_ok, else_ok]

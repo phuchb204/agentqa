@@ -1,0 +1,14 @@
+schema_version: case/1
+logical_key: unknown_operation
+title: Thao tác không hỗ trợ
+goal: Kiểm tra operation lạ
+requirements: []
+
+nodes:
+  - id: open
+    kind: action
+    operation: teleport
+    side_effect: read
+
+completion:
+  required_nodes: [open]

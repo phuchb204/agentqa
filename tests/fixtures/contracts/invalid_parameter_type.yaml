@@ -1,0 +1,19 @@
+schema_version: case/1
+logical_key: parameter_type
+title: Kiểu parameter sai
+goal: Kiểm tra type mismatch
+requirements: []
+
+parameter_defs:
+  count: {type: integer, required: true}
+
+nodes:
+  - id: fill_count
+    kind: action
+    operation: fill
+    target: {intent: count_input}
+    value: {kind: parameter, name: count, type: string}
+    side_effect: reversible
+
+completion:
+  required_nodes: [fill_count]

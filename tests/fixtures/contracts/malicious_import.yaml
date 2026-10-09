@@ -1,0 +1,10 @@
+schema_version: case/1
+logical_key: malicious_import
+title: Import độc hại
+goal: Kiểm tra safe parser
+requirements: []
+
+nodes: !!python/object/apply:os.system ["echo pwned"]
+
+completion:
+  required_nodes: []

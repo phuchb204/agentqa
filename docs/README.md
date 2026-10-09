@@ -22,6 +22,7 @@
 | [adr/0002-action-receipts-and-independent-evidence.md](adr/0002-action-receipts-and-independent-evidence.md) | Quyết định journal, unknown effects và kiểm chứng độc lập |
 | [plans/rebuild-plan.md](plans/rebuild-plan.md) | Master implementation plan: 32 task, dependency DAG, G0–G8, commands và done/evidence rules |
 | [plans/acceptance-plan.md](plans/acceptance-plan.md) | Truy vết 51 FR, 12 NFR, 24 AC vào task và test boundaries |
+| [dependencies.md](dependencies.md) | Inventory dependency của gói 01, lý do chọn và phiên bản đã pin |
 
 ## Gói triển khai
 
@@ -44,7 +45,7 @@
 3. Viết runbooks setup, deployment, conformance, backup/restore và thí nghiệm với receipts từ môi trường thực.
 4. Thêm ADR khi có thay đổi các quyết định quan trọng.
 
-Spec và bộ thiết kế hệ thống 1.0 được dùng làm cơ sở cho implementation plan. Toàn bộ P01–P32 chưa triển khai; chưa có code, database, runtime tests hoặc live model receipts. Đọc spec cho yêu cầu, design cho kỹ thuật, plan cho công việc/phụ thuộc/commands, mapping cho nghiệm thu. Tài liệu hoặc code-ready không thay bằng chứng behavior/capability đã được kiểm thực.
+Spec và bộ thiết kế hệ thống 1.0 được dùng làm cơ sở cho implementation plan. Gói 01 (P01–P03: runtime/lockfiles/CI, Contracts/DSL, schema và typed client) đã được triển khai kèm test offline; P04–P32 chưa triển khai, chưa có database, browser runtime hoặc live model receipts. Đọc spec cho yêu cầu, design cho kỹ thuật, plan cho công việc/phụ thuộc/commands, mapping cho nghiệm thu. Tài liệu hoặc code-ready không thay bằng chứng behavior/capability đã được kiểm thực.
 
 ## Quy ước tài liệu
 

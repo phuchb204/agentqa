@@ -1,0 +1,16 @@
+schema_version: case/1
+logical_key: capability_mismatch
+title: Capability khai báo sai
+goal: Kiểm tra capability extraction
+requirements: []
+
+nodes:
+  - id: upload_file
+    kind: action
+    operation: upload
+    target: {intent: file_input}
+    side_effect: reversible
+
+completion:
+  required_nodes: [upload_file]
+required_capabilities: [dialog]

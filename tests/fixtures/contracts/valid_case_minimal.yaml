@@ -1,0 +1,31 @@
+schema_version: case/1
+logical_key: start_flow
+title: Bắt đầu quy trình
+goal: Đi tới trạng thái hoàn thành
+requirements: [flow_requirement]
+
+source_defs:
+  flow_requirement:
+    source_content_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    anchor: {type: section, value: flow}
+    quote_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    provenance: user
+
+nodes:
+  - id: open
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /start}
+    side_effect: read
+  - id: terminal
+    kind: checkpoint
+    assertions:
+      - id: reached_start
+        required: true
+        comparator: url_path_equals
+        expected: {kind: literal, value: /start}
+        source_refs: [flow_requirement]
+
+completion:
+  required_nodes: [open, terminal]
+  required_assertions: [reached_start]

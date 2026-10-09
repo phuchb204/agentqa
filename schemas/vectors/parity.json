@@ -1,0 +1,234 @@
+{
+  "vectors": [
+    {
+      "id": "valid_case_minimal",
+      "schema": { "name": "case", "version": "1" },
+      "valid": true,
+      "document": {
+        "schema_version": "case/1",
+        "logical_key": "vector_minimal",
+        "title": "Vector tối thiểu",
+        "goal": "Đi tới trạng thái",
+        "requirements": ["flow"],
+        "source_defs": {
+          "flow": {
+            "source_content_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "anchor": { "type": "section", "value": "flow" },
+            "quote_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "provenance": "user"
+          }
+        },
+        "nodes": [
+          {
+            "id": "open",
+            "kind": "action",
+            "operation": "navigate",
+            "value": { "kind": "literal", "value": "/start" },
+            "side_effect": "read"
+          },
+          {
+            "id": "check",
+            "kind": "checkpoint",
+            "assertions": [
+              {
+                "id": "reached",
+                "required": true,
+                "comparator": "url_path_equals",
+                "expected": { "kind": "literal", "value": "/start" },
+                "source_refs": ["flow"]
+              }
+            ]
+          }
+        ],
+        "completion": { "required_nodes": ["open", "check"], "required_assertions": ["reached"] }
+      }
+    },
+    {
+      "id": "valid_case_optional_null",
+      "schema": { "name": "case", "version": "1" },
+      "valid": true,
+      "document": {
+        "schema_version": "case/1",
+        "logical_key": "vector_null",
+        "title": "Vector null",
+        "goal": "Trường optional nhận null",
+        "requirements": [],
+        "nodes": [
+          {
+            "id": "open",
+            "kind": "action",
+            "operation": "navigate",
+            "target": null,
+            "value": { "kind": "literal", "value": "/start" },
+            "wait": null,
+            "side_effect": "read"
+          }
+        ],
+        "completion": { "required_nodes": ["open"], "required_assertions": [] }
+      }
+    },
+    {
+      "id": "invalid_case_missing_schema_version",
+      "schema": { "name": "case", "version": "1" },
+      "valid": false,
+      "document": {
+        "logical_key": "vector_missing",
+        "title": "Thiếu schema_version",
+        "goal": "Lỗi",
+        "requirements": [],
+        "nodes": [
+          {
+            "id": "open",
+            "kind": "action",
+            "operation": "navigate",
+            "value": { "kind": "literal", "value": "/start" },
+            "side_effect": "read"
+          }
+        ],
+        "completion": { "required_nodes": ["open"] }
+      }
+    },
+    {
+      "id": "invalid_case_unknown_schema_version",
+      "schema": { "name": "case", "version": "1" },
+      "valid": false,
+      "document": {
+        "schema_version": "case/2",
+        "logical_key": "vector_version",
+        "title": "Version lạ",
+        "goal": "Lỗi",
+        "requirements": [],
+        "nodes": [
+          {
+            "id": "open",
+            "kind": "action",
+            "operation": "navigate",
+            "value": { "kind": "literal", "value": "/start" },
+            "side_effect": "read"
+          }
+        ],
+        "completion": { "required_nodes": ["open"] }
+      }
+    },
+    {
+      "id": "invalid_case_unknown_node_kind",
+      "schema": { "name": "case", "version": "1" },
+      "valid": false,
+      "document": {
+        "schema_version": "case/1",
+        "logical_key": "vector_node",
+        "title": "Node lạ",
+        "goal": "Lỗi",
+        "requirements": [],
+        "nodes": [{ "id": "x", "kind": "teleport" }],
+        "completion": { "required_nodes": ["x"] }
+      }
+    },
+    {
+      "id": "invalid_case_unknown_operation",
+      "schema": { "name": "case", "version": "1" },
+      "valid": false,
+      "document": {
+        "schema_version": "case/1",
+        "logical_key": "vector_operation",
+        "title": "Operation lạ",
+        "goal": "Lỗi",
+        "requirements": [],
+        "nodes": [{ "id": "x", "kind": "action", "operation": "teleport", "side_effect": "read" }],
+        "completion": { "required_nodes": ["x"] }
+      }
+    },
+    {
+      "id": "invalid_case_unknown_comparator",
+      "schema": { "name": "case", "version": "1" },
+      "valid": false,
+      "document": {
+        "schema_version": "case/1",
+        "logical_key": "vector_comparator",
+        "title": "Comparator lạ",
+        "goal": "Lỗi",
+        "requirements": [],
+        "nodes": [
+          {
+            "id": "c",
+            "kind": "checkpoint",
+            "assertions": [{ "id": "a", "comparator": "teleport", "required": true, "source_refs": ["x"] }]
+          }
+        ],
+        "completion": { "required_nodes": ["c"] }
+      }
+    },
+    {
+      "id": "invalid_case_bad_digest",
+      "schema": { "name": "case", "version": "1" },
+      "valid": false,
+      "document": {
+        "schema_version": "case/1",
+        "logical_key": "vector_digest",
+        "title": "Digest sai",
+        "goal": "Lỗi",
+        "requirements": [],
+        "source_defs": {
+          "flow": {
+            "source_content_digest": "zzzz",
+            "anchor": { "type": "section", "value": "flow" },
+            "quote_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "provenance": "user"
+          }
+        },
+        "nodes": [
+          {
+            "id": "open",
+            "kind": "action",
+            "operation": "navigate",
+            "value": { "kind": "literal", "value": "/start" },
+            "side_effect": "read"
+          }
+        ],
+        "completion": { "required_nodes": ["open"] }
+      }
+    },
+    {
+      "id": "valid_money_decimal_string",
+      "schema": { "name": "money", "version": "1" },
+      "valid": true,
+      "document": { "amount": "1234.50", "currency": "USD" }
+    },
+    {
+      "id": "invalid_money_currency_pattern",
+      "schema": { "name": "money", "version": "1" },
+      "valid": false,
+      "document": { "amount": "1.00", "currency": "usd" }
+    },
+    {
+      "id": "valid_run_event",
+      "schema": { "name": "run-event", "version": "1" },
+      "valid": true,
+      "document": {
+        "event_id": "2f3e4d5c-6b7a-4890-9abc-def012345678",
+        "run_id": "3f3e4d5c-6b7a-4890-9abc-def012345679",
+        "run_seq": 1,
+        "schema_version": "run-event/1",
+        "type": "run.state_changed",
+        "actor": "vector",
+        "payload": { "event_type": "run.state_changed", "status": "queued" },
+        "recorded_at": "2026-10-09T00:00:00Z"
+      }
+    },
+    {
+      "id": "invalid_run_event_unknown_type",
+      "schema": { "name": "run-event", "version": "1" },
+      "valid": false,
+      "document": {
+        "event_id": "2f3e4d5c-6b7a-4890-9abc-def012345678",
+        "run_id": "3f3e4d5c-6b7a-4890-9abc-def012345679",
+        "run_seq": 1,
+        "schema_version": "run-event/1",
+        "type": "run.unknown",
+        "actor": "vector",
+        "payload": { "event_type": "run.unknown", "status": "queued" },
+        "recorded_at": "2026-10-09T00:00:00Z"
+      }
+    }
+  ]
+}

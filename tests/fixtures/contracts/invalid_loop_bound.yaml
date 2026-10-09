@@ -1,0 +1,28 @@
+schema_version: case/1
+logical_key: loop_bound
+title: Loop bound sai
+goal: Kiểm tra bound loop
+requirements: []
+
+nodes:
+  - id: open
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /start}
+    side_effect: read
+  - id: repeat
+    kind: loop
+    condition:
+      kind: comparison
+      comparator: exists
+      target: {intent: more_items}
+    max_iterations: 0
+    body:
+      - id: inner
+        kind: action
+        operation: click
+        target: {intent: next_page}
+        side_effect: read
+
+completion:
+  required_nodes: [open, inner]
