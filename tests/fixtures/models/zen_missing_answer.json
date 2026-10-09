@@ -1,0 +1,12 @@
+{
+  "model": "jev-1.13-free",
+  "answers": {
+    "next_action": {
+      "type": "choice",
+      "choice": "click_login",
+      "confidence": 0.91,
+      "probabilities": {"click_login": 0.91, "click_cancel": 0.09}
+    }
+  },
+  "usage": {"input_tokens": 120, "output_tokens": 12}
+}

@@ -28,6 +28,27 @@ class Operation(StrEnum):
     HANDLE_DIALOG = "handle_dialog"
     EXPECT_DOWNLOAD = "expect_download"
 
+    def needs_target(self) -> bool:
+        return self in TARGET_OPERATIONS
+
+
+TARGET_OPERATIONS = frozenset(
+    {
+        Operation.CLICK,
+        Operation.DOUBLE_CLICK,
+        Operation.FILL,
+        Operation.TYPE,
+        Operation.CLEAR,
+        Operation.PRESS,
+        Operation.CHECK,
+        Operation.UNCHECK,
+        Operation.SELECT,
+        Operation.HOVER,
+        Operation.SCROLL,
+        Operation.UPLOAD,
+    }
+)
+
 
 class SideEffectClass(StrEnum):
     READ = "read"

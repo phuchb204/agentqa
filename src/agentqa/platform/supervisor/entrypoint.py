@@ -13,6 +13,7 @@ from agentqa.agent.replay import PlaywrightSceneProvider
 from agentqa.contracts.actions import ActionCommand, ActionReceipt
 from agentqa.contracts.values import SensitiveValue
 from agentqa.platform.fixtures import FixtureRegistry, TaskboardFixture, synthetic_password
+from agentqa.platform.runs.composition import AgentModels
 from agentqa.platform.runs.coordinator import BridgedRunEventRecorder, RunCoordinator
 from agentqa.platform.security.egress import AllowedEndpoint, EgressPolicy, system_resolver
 from agentqa.platform.security.proxy import EgressProxy
@@ -120,6 +121,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixture-control-token", default="")
     parser.add_argument("--fault-loss-intent", default="")
     parser.add_argument("--fault-storage", action="store_true")
+    parser.add_argument("--agent-models", choices=["none", "fake"], default="none")
+    parser.add_argument("--agent-script", default="")
     return parser
 
 
@@ -165,17 +168,31 @@ async def run(args: argparse.Namespace) -> None:
             lease_seconds=args.lease_seconds,
         ),
     )
-    fixtures = FixtureRegistry()
+    fixture_registry = FixtureRegistry()
     if args.fixture_base_url:
-        fixtures.register(TaskboardFixture(args.fixture_base_url, args.fixture_control_token))
+        fixture_registry.register(TaskboardFixture(args.fixture_base_url, args.fixture_control_token))
+    agent_models = AgentModels()
+    if args.agent_models == "fake":
+        if args.agent_script:
+            from importlib import import_module
+            from pathlib import Path as _Path
+
+            module = import_module("tests.support.agent_models")
+            agent_models = module.load_agent_models(_Path(args.agent_script))
+        else:
+            from agentqa.models.fakes import FakeGo, FakeJev
+
+            agent_models = AgentModels(generative=FakeGo(), decision=FakeJev())
     coordinator = RunCoordinator(
         runtime=runtime,
         contexts=session.contexts,
         read_port=read_port,
         scene_provider=PlaywrightSceneProvider(session.contexts),
-        fixtures=fixtures,
+        fixtures=fixture_registry,
         recorder=BridgedRunEventRecorder(bridge, args.dsn),
         secret_namespace_hook=broker.set_namespace,
+        agent_models=agent_models,
+        taint=taint,
     )
     server = SupervisorServer(runtime, token=args.control_token, port=args.port, coordinator=coordinator)
     port = await server.start()

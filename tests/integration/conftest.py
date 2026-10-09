@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import json
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from uuid import UUID
 
 import pytest_asyncio
@@ -44,6 +46,33 @@ async def replay_workspace(
     )
     yield ReplayWorkspace(user_id=user_id, workspace_id=workspace_id, harness=harness)
     harness.aclose()
+
+
+@pytest_asyncio.fixture
+async def agent_workspace_factory(
+    harness_engines, test_db, taskboard_server: TaskboardServer, tmp_path: Path
+) -> AsyncIterator[Callable[[dict], Awaitable[ReplayWorkspace]]]:
+    created: list[tuple[UUID, UUID, ReplayHarness]] = []
+
+    async def make(script: dict) -> ReplayWorkspace:
+        script_path = tmp_path / f"agent-script-{len(created)}.json"
+        script_path.write_text(json.dumps(script, ensure_ascii=False), encoding="utf-8")
+        user_id, workspace_id = await seed_replay_workspace(harness_engines)
+        harness = build_replay_harness(
+            engines=harness_engines,
+            test_db=test_db,
+            principal_id=user_id,
+            workspace_id=workspace_id,
+            taskboard_server=taskboard_server,
+            agent_models=True,
+            agent_script=str(script_path),
+        )
+        created.append((user_id, workspace_id, harness))
+        return ReplayWorkspace(user_id=user_id, workspace_id=workspace_id, harness=harness)
+
+    yield make
+    for _user_id, _workspace_id, harness in created:
+        harness.aclose()
 
 
 @pytest_asyncio.fixture

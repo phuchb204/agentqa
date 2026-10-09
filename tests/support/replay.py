@@ -8,6 +8,7 @@ from uuid import UUID
 
 from agentqa.contracts.canonical import digest_content
 from agentqa.contracts.case import CaseContent
+from agentqa.contracts.observation import Modality
 from agentqa.platform.fixtures import TaskboardFixture
 from agentqa.platform.queue import JobQueue
 from agentqa.platform.runs.coordinator import ExecutionOutcome, ExecutionSpec, RunEventRecorder, outcome_from_dict
@@ -46,6 +47,9 @@ class ReplaySupervisor:
                     "parameters": spec.parameters,
                     "gate_profile": spec.gate_profile,
                     "fence_epoch": spec.fence_epoch,
+                    "policy": spec.policy,
+                    "observation_mode": spec.observation_mode,
+                    "snapshot_digest": spec.snapshot_digest,
                 }
             )
         finally:
@@ -102,6 +106,8 @@ def start_replay_supervisor(
     lease_seconds: float = 300.0,
     fault_loss_intent: str = "",
     fault_storage: bool = False,
+    agent_models: bool = False,
+    agent_script: str = "",
 ) -> ReplaySupervisor:
     parts = urlsplit(taskboard_server.base_url)
     extra_args = [
@@ -112,6 +118,10 @@ def start_replay_supervisor(
         extra_args.append(f"--fault-loss-intent={fault_loss_intent}")
     if fault_storage:
         extra_args.append("--fault-storage")
+    if agent_models:
+        extra_args.append("--agent-models=fake")
+    if agent_script:
+        extra_args.append(f"--agent-script={agent_script}")
     process = start_supervisor(
         dsn=dsn,
         workspace_id=workspace_id,
@@ -141,6 +151,8 @@ def build_replay_harness(
     taskboard_server: TaskboardServer,
     fault_loss_intent: str = "",
     fault_storage: bool = False,
+    agent_models: bool = False,
+    agent_script: str = "",
 ) -> ReplayHarness:
     supervisor = start_replay_supervisor(
         dsn=test_db.dsn(ROLE_SUPERVISOR),
@@ -151,6 +163,8 @@ def build_replay_harness(
         taskboard_server=taskboard_server,
         fault_loss_intent=fault_loss_intent,
         fault_storage=fault_storage,
+        agent_models=agent_models,
+        agent_script=agent_script,
     )
     remote = RemoteCoordinator(supervisor)
     recorder = RunEventRecorder(engines[ROLE_WORKER])
@@ -226,6 +240,8 @@ async def submit_case_run(
     cases: tuple[CaseContent, ...] | None = None,
     environment_content: dict,
     idempotency_key: str | None = None,
+    policy: str = "default",
+    observation_mode: str = "semantic",
 ) -> dict:
     from uuid import uuid4
 
@@ -259,6 +275,8 @@ async def submit_case_run(
             case_revision_ids=tuple(revision_ids),
             environment_revision_id=environment_id,
             provided_capabilities=frozenset(),
+            policy=policy,
+            observation_mode=Modality(observation_mode),
         )
     )
     async with create_session_factory(engines[ROLE_API])() as session, session.begin():

@@ -1,0 +1,13 @@
+{
+  "model": "jev-1.13-free",
+  "answers": {
+    "risk": {
+      "type": "score",
+      "score": 1.7,
+      "confidence": 0.88,
+      "legend": {"0": "Can wait", "1": "This week", "2": "Today"},
+      "probabilities": {"0": 0.1, "1": 0.1, "2": 0.8}
+    }
+  },
+  "usage": {"input_tokens": 90, "output_tokens": 6}
+}

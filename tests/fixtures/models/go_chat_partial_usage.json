@@ -1,0 +1,12 @@
+{
+  "id": "chatcmpl-4",
+  "model": "deepseek-v4.1-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {"role": "assistant", "content": "partial usage"},
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {"prompt_tokens": 10}
+}

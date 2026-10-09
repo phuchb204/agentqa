@@ -10,7 +10,7 @@ from agentqa.contracts.case import Condition, FixtureReceipt
 from agentqa.contracts.events import RunEvent
 from agentqa.contracts.identity import CandidateProof, TargetDescriptor
 from agentqa.contracts.models import (
-    DecisionQuestion,
+    DecisionRequest,
     DecisionResult,
     GenerationRequest,
     GenerationResult,
@@ -72,11 +72,11 @@ class VerificationPort(Protocol):
 
 
 class GenerativeModelPort(Protocol):
-    def generate(self, request: GenerationRequest) -> GenerationResult: ...
+    async def generate(self, request: GenerationRequest) -> GenerationResult: ...
 
 
 class DecisionModelPort(Protocol):
-    def decide(self, questions: list[DecisionQuestion]) -> DecisionResult: ...
+    async def decide(self, request: DecisionRequest) -> DecisionResult: ...
 
 
 class EventSink(Protocol):

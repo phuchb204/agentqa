@@ -1,9 +1,10 @@
 # Dependency inventory
 
-- Ngày: 2026-10-09
-- Trạng thái: Inventory của gói 01 (P01–P03), gói 02 (P04–P06) và gói 03 (P07–P11); version chính xác pin trong `uv.lock` và `pnpm-lock.yaml`
+- Ngày: 2026-10-10
+- Trạng thái: Inventory của gói 01 (P01–P03), gói 02 (P04–P06), gói 03 (P07–P11) và gói 04 (P12–P15); version chính xác pin trong `uv.lock` và `pnpm-lock.yaml`
 - Cập nhật gói 03: playwright/uvicorn/python-multipart (P07); pillow (P08)
-- Nguồn quyết định: [architecture.md](architecture.md) §3, [rebuild-plan.md](plans/rebuild-plan.md) §5/§8, [01-foundation.md](plans/01-foundation.md), [02-data-and-trust.md](plans/02-data-and-trust.md)
+- Cập nhật gói 04: không thêm dependency; hai adapters Go/Zen dùng httpx, marker ảnh conformance dùng pillow, fakes/tests không cần SDK provider
+- Nguồn quyết định: [architecture.md](architecture.md) §3, [rebuild-plan.md](plans/rebuild-plan.md) §5/§8, [01-foundation.md](plans/01-foundation.md), [02-data-and-trust.md](plans/02-data-and-trust.md), [04-models-and-observation.md](plans/04-models-and-observation.md)
 
 ## 1. Toolchain
 

@@ -147,6 +147,9 @@ class RunWorker:
             parameters=dict(environment_content.get("parameters", {})),
             gate_profile=str(snapshot.content.get("gate_profile", "strict")),
             fence_epoch=int(attempt.fence_epoch) if attempt is not None else 1,
+            policy=str(snapshot.content.get("policy", "replay")),
+            observation_mode=str(snapshot.content.get("observation_mode", "semantic")),
+            snapshot_digest=str(snapshot.content_digest or ""),
         )
 
     async def _pending_control(self, workspace_id: UUID, run_id: UUID) -> UUID | None:

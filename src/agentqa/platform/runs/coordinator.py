@@ -11,10 +11,12 @@ from uuid import UUID, uuid4
 from agentqa.agent.browser import PlaywrightReadPort
 from agentqa.agent.browser.contexts import ContextRegistry
 from agentqa.agent.identity import TargetGuard
-from agentqa.agent.replay import PlaywrightSceneProvider, ReplayOutcome, ReplayRunner, validate_case
+from agentqa.agent.replay import PlaywrightSceneProvider, ReplayRunner, validate_case
 from agentqa.agent.replay.runner import ActionOutcomeView
 from agentqa.contracts.case import ActionNode, CaseContent, CheckpointNode
+from agentqa.contracts.errors import AgentQAValidationError
 from agentqa.contracts.observation import Modality, Observation, RedactionStatus
+from agentqa.contracts.policies import PolicyKind, RunMode, validate_mode_policy_modality
 from agentqa.contracts.runs import ExecutionStatus
 from agentqa.contracts.verification import (
     AssertionResult,
@@ -23,6 +25,11 @@ from agentqa.contracts.verification import (
     EvidenceStatus,
 )
 from agentqa.platform.fixtures import FixtureRegistry
+from agentqa.platform.runs.composition import (
+    AgentModels,
+    bundle_from_replay,
+    run_agent_bundle,
+)
 from agentqa.platform.runs.facts import capture_facts
 from agentqa.platform.supervisor.commands import CommandRequest
 from agentqa.platform.supervisor.runtime import SupervisorRuntime
@@ -37,6 +44,8 @@ from agentqa.verify import (
     reduce_verdict,
 )
 from agentqa.verify.evaluators import evaluate_checkpoint
+
+AGENT_POLICIES = frozenset({PolicyKind.LLM.value, PolicyKind.JEV_CASCADE.value})
 
 
 @dataclass(frozen=True)
@@ -55,6 +64,9 @@ class ExecutionSpec:
     gate_profile: str = "strict"
     fence_epoch: int = 1
     actor: str = "worker"
+    policy: str = "replay"
+    observation_mode: str = "semantic"
+    snapshot_digest: str = ""
 
 
 @dataclass
@@ -73,6 +85,8 @@ class ExecutionOutcome:
     unknown_commands: list[str]
     cleanup_failed: bool = False
     outcome_probe: dict[str, Any] | None = None
+    degraded: bool = False
+    policy_versions: list[str] = field(default_factory=list)
 
 
 class BridgedRunEventRecorder:
@@ -295,6 +309,8 @@ class RunCoordinator:
         recorder: Any,
         guard: TargetGuard | None = None,
         secret_namespace_hook: Callable[[str], None] | None = None,
+        agent_models: AgentModels | None = None,
+        taint: Any = None,
     ) -> None:
         self.runtime = runtime
         self.contexts = contexts
@@ -305,6 +321,8 @@ class RunCoordinator:
         self.guard = guard or TargetGuard()
         self._secret_namespace_hook = secret_namespace_hook
         self._active_spec: ExecutionSpec | None = None
+        self.agent_models = agent_models or AgentModels()
+        self.taint = taint
 
     async def apply_control(self, control_id: UUID) -> dict[str, Any]:
         result = await self.runtime.apply_control(control_id)
@@ -321,6 +339,27 @@ class RunCoordinator:
 
     async def execute(self, spec: ExecutionSpec) -> ExecutionOutcome:
         self._active_spec = spec
+        agent_policy = spec.policy in AGENT_POLICIES
+        if agent_policy:
+            try:
+                validate_mode_policy_modality(
+                    RunMode.AGENT,
+                    PolicyKind(spec.policy),
+                    Modality(spec.observation_mode),
+                )
+            except (AgentQAValidationError, ValueError):
+                return self._terminal(
+                    spec,
+                    ExecutionStatus.ERROR,
+                    "inconclusive",
+                    None,
+                    ["policy_config_invalid"],
+                    {"supported": False},
+                    [],
+                    CompletionOutcome(False, False),
+                    [],
+                    [],
+                )
         if self._secret_namespace_hook is not None:
             self._secret_namespace_hook(spec.namespace)
         session_key = f"exec-{spec.execution_id}"
@@ -391,26 +430,51 @@ class RunCoordinator:
         )
         await self.contexts.open(context_key)
         hooks = _CoordinatorHooks(self, spec, session_key, context_key)
-        runner = ReplayRunner(case, hooks=hooks, guard=self.guard, actor=spec.actor)
-        replay = await runner.run()
+        if agent_policy:
+            bundle = await run_agent_bundle(
+                self,
+                spec,
+                hooks,
+                case=case,
+                composition=self.agent_models,
+                taint=self.taint,
+            )
+        else:
+            runner = ReplayRunner(case, hooks=hooks, guard=self.guard, actor=spec.actor)
+            replay = await runner.run()
+            bundle = bundle_from_replay(replay)
+        if bundle.aborted_reason is not None:
+            await self.recorder.record(
+                workspace_id=spec.workspace_id,
+                principal_id=spec.principal_id,
+                run_id=spec.run_id,
+                execution_id=spec.execution_id,
+                event_type="execution.aborted",
+                actor=spec.actor,
+                payload={
+                    "reason": bundle.aborted_reason,
+                    "degraded": bundle.degraded,
+                    "policy_versions": list(bundle.policy_versions),
+                },
+            )
         plan = CompletionPlan.from_case(case)
         completion = evaluate_completion(
             plan,
             ExecutionProof(
-                visited_nodes=frozenset(replay.visited_nodes),
-                branch_decisions=dict(replay.branch_decisions),
-                checkpoint_receipts=frozenset(replay.checkpoint_receipts),
+                visited_nodes=frozenset(bundle.visited_nodes),
+                branch_decisions=dict(bundle.branch_decisions),
+                checkpoint_receipts=frozenset(bundle.checkpoint_receipts),
             ),
         )
         applicable = {
-            assertion: plan.assertion_checkpoints.get(assertion) in replay.checkpoint_receipts
+            assertion: plan.assertion_checkpoints.get(assertion) in bundle.checkpoint_receipts
             for assertion in plan.required_assertions
         }
-        status = _execution_status(replay)
+        status = _execution_status(bundle.aborted_reason)
         attempt = AttemptEvidence(
             attempt_no=spec.fence_epoch,
             execution_status=status,
-            results=tuple(replay.assertion_results),
+            results=tuple(bundle.assertion_results),
             completion=completion,
             applicable=applicable,
             revision_ready=True,
@@ -418,7 +482,7 @@ class RunCoordinator:
         run_result = reduce_verdict(spec.run_id, [attempt], required_assertions=plan.required_assertions)
         evidence_ok = not any(
             result.evidence_status != EvidenceStatus.PRESENT
-            for result in replay.assertion_results
+            for result in bundle.assertion_results
             if result.status == AssertionStatus.ERROR
         )
         gate = evaluate_gate(
@@ -428,6 +492,7 @@ class RunCoordinator:
                 completed=completion.complete,
                 revision_ready=True,
                 evidence_ok=evidence_ok,
+                degraded=bundle.degraded,
             ),
         )
         outcome_probe: dict[str, Any] | None = None
@@ -473,14 +538,16 @@ class RunCoordinator:
                     "status": step.status,
                     "detail": step.detail,
                 }
-                for step in replay.steps
+                for step in bundle.steps
             ],
-            assertion_results=list(replay.assertion_results),
+            assertion_results=list(bundle.assertion_results),
             completion=completion,
-            trace_refs=list(replay.trace_refs),
+            trace_refs=list(bundle.trace_refs),
             unknown_commands=list(hooks.unknown_commands),
             cleanup_failed=cleanup_failed,
             outcome_probe=outcome_probe,
+            degraded=bundle.degraded,
+            policy_versions=list(bundle.policy_versions),
         )
         return outcome
 
@@ -539,6 +606,8 @@ def outcome_to_dict(outcome: ExecutionOutcome) -> dict[str, Any]:
         "unknown_commands": list(outcome.unknown_commands),
         "cleanup_failed": outcome.cleanup_failed,
         "outcome_probe": outcome.outcome_probe,
+        "degraded": outcome.degraded,
+        "policy_versions": list(outcome.policy_versions),
     }
 
 
@@ -565,6 +634,8 @@ def outcome_from_dict(data: dict[str, Any]) -> ExecutionOutcome:
         unknown_commands=list(data.get("unknown_commands", [])),
         cleanup_failed=bool(data.get("cleanup_failed", False)),
         outcome_probe=data.get("outcome_probe"),
+        degraded=bool(data.get("degraded", False)),
+        policy_versions=list(data.get("policy_versions", [])),
     )
 
 
@@ -627,9 +698,9 @@ def _substitute_expr(expr: dict[str, Any], parameters: dict[str, str]) -> dict[s
     return expr
 
 
-def _execution_status(replay: ReplayOutcome) -> ExecutionStatus:
-    if replay.aborted_reason is None:
+def _execution_status(aborted_reason: str | None) -> ExecutionStatus:
+    if aborted_reason is None or aborted_reason.startswith("policy_stop"):
         return ExecutionStatus.SUCCEEDED
-    if "control_cancelled" in replay.aborted_reason:
+    if "control_cancelled" in aborted_reason:
         return ExecutionStatus.CANCELLED
     return ExecutionStatus.ERROR

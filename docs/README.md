@@ -22,6 +22,7 @@
 | [adr/0002-action-receipts-and-independent-evidence.md](adr/0002-action-receipts-and-independent-evidence.md) | Quyết định journal, unknown effects và kiểm chứng độc lập |
 | [plans/rebuild-plan.md](plans/rebuild-plan.md) | Master implementation plan: 32 task, dependency DAG, G0–G8, commands và done/evidence rules |
 | [plans/acceptance-plan.md](plans/acceptance-plan.md) | Truy vết 51 FR, 12 NFR, 24 AC vào task và test boundaries |
+| [runbooks/model-conformance.md](runbooks/model-conformance.md) | Runbook conformance hai route model: offline validate và live probe/receipts |
 | [dependencies.md](dependencies.md) | Inventory dependency của gói 01, lý do chọn và phiên bản đã pin |
 
 ## Gói triển khai
@@ -45,7 +46,7 @@
 3. Viết runbooks setup, deployment, conformance, backup/restore và thí nghiệm với receipts từ môi trường thực.
 4. Thêm ADR khi có thay đổi các quyết định quan trọng.
 
-Spec và bộ thiết kế hệ thống 1.0 được dùng làm cơ sở cho implementation plan. Gói 01 (P01–P03: runtime/lockfiles/CI, Contracts/DSL, schema và typed client), gói 02 (P04–P06: PostgreSQL 18/RLS/migrations, identity/sessions/secret grants, revisions/snapshots/events/ledger/artifacts) và gói 03 (P07–P11: Taskboard fixture, browser sandbox/egress/safe capture, supervisor/journal/fences, guard/Verify, strict replay qua API) đã được triển khai kèm test offline; P12–P32 chưa triển khai, chưa có live model receipts (hai route Go/Zen vẫn chưa gọi thật). Gói 02 chạy test trên PostgreSQL 18 thật qua `infra/compose.test.yml`; gói 03 chạy Chromium thật, local trap servers và PostgreSQL 18 thật, không gọi Go/Zen. Đọc spec cho yêu cầu, design cho kỹ thuật, plan cho công việc/phụ thuộc/commands, mapping cho nghiệm thu. Tài liệu hoặc code-ready không thay bằng chứng behavior/capability đã được kiểm thực.
+Spec và bộ thiết kế hệ thống 1.0 được dùng làm cơ sở cho implementation plan. Gói 01 (P01–P03: runtime/lockfiles/CI, Contracts/DSL, schema và typed client), gói 02 (P04–P06: PostgreSQL 18/RLS/migrations, identity/sessions/secret grants, revisions/snapshots/events/ledger/artifacts), gói 03 (P07–P11: Taskboard fixture, browser sandbox/egress/safe capture, supervisor/journal/fences, guard/Verify, strict replay qua API) và gói 04 (P12–P15: hai model adapters Go/Zen với fakes/retry/accounting, semantic/hybrid/vision-first observation, LLM policy + Jev cascade + AgentRunner qua Coordinator, conformance tool/registry) đã được triển khai kèm test offline; P16–P32 chưa triển khai. Gói 02 chạy test trên PostgreSQL 18 thật qua `infra/compose.test.yml`; gói 03–04 chạy Chromium thật, local trap servers và PostgreSQL 18 thật, toàn bộ model I/O trong test là fake/stub, không gọi Go/Zen. Live conformance hai route đã chạy tại master (2026-10-10): Zen `verified`, Go `verified` đầy đủ capability với budget output 4096 (budget 2048 làm image bị cắt bởi reasoning — xem [runbook](runbooks/model-conformance.md)); receipts sanitized nằm ngoài Git. Đọc spec cho yêu cầu, design cho kỹ thuật, plan cho công việc/phụ thuộc/commands, mapping cho nghiệm thu. Tài liệu hoặc code-ready không thay bằng chứng behavior/capability đã được kiểm thực.
 
 ## Quy ước tài liệu
 

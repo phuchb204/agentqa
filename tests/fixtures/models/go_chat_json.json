@@ -1,0 +1,12 @@
+{
+  "id": "chatcmpl-2",
+  "model": "deepseek-v4.1-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {"role": "assistant", "content": "{\"operation\": \"click\", \"target\": \"c3\"}"},
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {"prompt_tokens": 200, "completion_tokens": 8}
+}

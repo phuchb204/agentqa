@@ -1,0 +1,12 @@
+{
+  "model": "jev-1.13-free",
+  "answers": {
+    "next_action": {
+      "type": "choice",
+      "choice": "khong_co_trong_criteria",
+      "confidence": 0.9,
+      "probabilities": {"khong_co_trong_criteria": 0.9, "click_cancel": 0.1}
+    }
+  },
+  "usage": {"input_tokens": 120, "output_tokens": 12}
+}

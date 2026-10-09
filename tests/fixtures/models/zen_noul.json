@@ -1,0 +1,7 @@
+{
+  "model": "jev-1.13-free",
+  "answers": {
+    "progress": {"type": "noul", "noul": 0.98}
+  },
+  "usage": {"input_tokens": 80, "output_tokens": 4}
+}

@@ -1,0 +1,11 @@
+{
+  "id": "chatcmpl-3",
+  "model": "deepseek-v4.1-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {"role": "assistant", "content": "không có usage"},
+      "finish_reason": "stop"
+    }
+  ]
+}

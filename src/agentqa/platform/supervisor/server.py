@@ -162,6 +162,9 @@ class SupervisorServer:
                     parameters=dict(payload.get("parameters", {})),
                     gate_profile=payload.get("gate_profile", "strict"),
                     fence_epoch=int(payload.get("fence_epoch", 1)),
+                    policy=str(payload.get("policy", "replay")),
+                    observation_mode=str(payload.get("observation_mode", "semantic")),
+                    snapshot_digest=str(payload.get("snapshot_digest", "")),
                 )
                 outcome = await self._coordinator.execute(spec)
                 return {"ok": True, "result": outcome_to_dict(outcome)}
