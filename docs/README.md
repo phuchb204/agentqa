@@ -45,7 +45,7 @@
 3. Viết runbooks setup, deployment, conformance, backup/restore và thí nghiệm với receipts từ môi trường thực.
 4. Thêm ADR khi có thay đổi các quyết định quan trọng.
 
-Spec và bộ thiết kế hệ thống 1.0 được dùng làm cơ sở cho implementation plan. Gói 01 (P01–P03: runtime/lockfiles/CI, Contracts/DSL, schema và typed client) đã được triển khai kèm test offline; P04–P32 chưa triển khai, chưa có database, browser runtime hoặc live model receipts. Đọc spec cho yêu cầu, design cho kỹ thuật, plan cho công việc/phụ thuộc/commands, mapping cho nghiệm thu. Tài liệu hoặc code-ready không thay bằng chứng behavior/capability đã được kiểm thực.
+Spec và bộ thiết kế hệ thống 1.0 được dùng làm cơ sở cho implementation plan. Gói 01 (P01–P03: runtime/lockfiles/CI, Contracts/DSL, schema và typed client) và gói 02 (P04–P06: PostgreSQL 18/RLS/migrations, identity/sessions/secret grants, revisions/snapshots/events/ledger/artifacts) đã được triển khai kèm test offline; P07–P32 chưa triển khai, chưa có browser runtime hoặc live model receipts. Gói 02 chạy test trên PostgreSQL 18 thật qua `infra/compose.test.yml` với profile private/isolated; đọc spec cho yêu cầu, design cho kỹ thuật, plan cho công việc/phụ thuộc/commands, mapping cho nghiệm thu. Tài liệu hoặc code-ready không thay bằng chứng behavior/capability đã được kiểm thực.
 
 ## Quy ước tài liệu
 

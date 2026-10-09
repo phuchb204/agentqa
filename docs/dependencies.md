@@ -1,8 +1,8 @@
 # Dependency inventory
 
 - Ngày: 2026-10-09
-- Trạng thái: Inventory của gói 01 (P01–P03); version chính xác pin trong `uv.lock` và `pnpm-lock.yaml`
-- Nguồn quyết định: [architecture.md](architecture.md) §3, [rebuild-plan.md](plans/rebuild-plan.md) §5/§8, [01-foundation.md](plans/01-foundation.md)
+- Trạng thái: Inventory của gói 01 (P01–P03) và gói 02 (P04–P06); version chính xác pin trong `uv.lock` và `pnpm-lock.yaml`
+- Nguồn quyết định: [architecture.md](architecture.md) §3, [rebuild-plan.md](plans/rebuild-plan.md) §5/§8, [01-foundation.md](plans/01-foundation.md), [02-data-and-trust.md](plans/02-data-and-trust.md)
 
 ## 1. Toolchain
 
@@ -22,12 +22,18 @@
 | pydantic | 2.14.0 | Validation models và JSON Schema 2020-12 cho Contracts (architecture §3, P02) |
 | pyyaml | 6.0.3 | Safe parser cho Case DSL (rebuild-plan §8, P02) |
 | rfc8785 | 0.1.4 | Canonical JSON RFC 8785 đã chọn (rebuild-plan §8, P02) |
+| sqlalchemy | 2.1.4 | ORM/Core async cho PostgreSQL, transaction và truy vấn typed (architecture §3, P04) |
+| psycopg | 3.3.6 | Driver PostgreSQL 3 async (psycopg[binary]) cho SQLAlchemy (architecture §3, P04) |
+| alembic | 1.20.0 | Migration runner lock/version; migration 0001 schema core, 0002 query indexes (P04, P06) |
+| pwdlib | 0.3.1 | Argon2id password hashing qua thư viện maintained (api-and-security §5, P05) |
+| cryptography | 46.0.7 | AES-256-GCM envelope credential: data key/nonce/AAD, master key ngoài DB (api-and-security §6, P05) |
 
 ## 3. Python — dev
 
 | Package | Version | Lý do |
 |---|---|---|
 | pytest | 8.4.2 | Chạy test offline; không gọi model thật (NFR-12) |
+| pytest-asyncio | 1.4.0 | Async tests cho database/security/platform (P04–P06) |
 | ruff | 0.16.10 | Lint + format gate (P01.3) |
 | import-linter | 2.15 | Cưỡng chế luật import năm lớp (P01.3, NFR-10) |
 | jsonschema | 4.26.0 | Xác thực generated JSON Schema trong parity tests (P03.3) |
