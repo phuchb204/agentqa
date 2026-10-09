@@ -21,6 +21,7 @@ Nguồn được giữ từ tài liệu đồ án đã đọc và tài liệu ch
 - TypeSafe, confidence: https://docs.typesafe.ai/confidence
 - OpenRouter, hướng dẫn Jev: https://openrouter.ai/docs/guides/community/jev
 - TypeSafe, tài liệu Jev: https://docs.typesafe.ai
+- `jev-ultrafast`, reference implementation agent trình duyệt dùng Jev cho operation + target (MIT): https://github.com/browser-use/jev-ultrafast
 - Playwright, locator: https://playwright.dev/docs/locators
 - Playwright, assertion: https://playwright.dev/docs/test-assertions
 - Playwright, thực hành kiểm thử: https://playwright.dev/docs/best-practices
@@ -29,7 +30,7 @@ Nguồn được giữ từ tài liệu đồ án đã đọc và tài liệu ch
 
 Các công cụ tham khảo không phải dependency đã được chọn cho AgentQA. Thiết kế Python hoặc ngôn ngữ khác phải kiểm tra API tương ứng, không áp nguyên ví dụ TypeScript.
 
-Provider được chọn ban đầu là OpenCode Zen và OpenCode Go. OpenRouter chỉ là nguồn tham khảo về Jev, không phải adapter phải triển khai. Dữ kiện đã kiểm tra, quyết định suy ra và khả năng cần xác minh được phân biệt trong [cơ sở nghiên cứu](research/design-evidence.md).
+Provider được chọn ban đầu là OpenCode Zen và OpenCode Go. OpenRouter chỉ là nguồn tham khảo về Jev, không phải adapter phải triển khai. `jev-ultrafast` gọi thẳng TypeSafe API chứ không qua Zen; dùng làm tham chiếu pattern operation/target, không copy client, prompt hay số liệu demo. Dữ kiện đã kiểm tra, quyết định suy ra và khả năng cần xác minh được phân biệt trong [cơ sở nghiên cứu](research/design-evidence.md).
 
 ## Phục hồi và đánh giá
 
