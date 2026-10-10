@@ -206,6 +206,8 @@ class SupervisorRuntime:
             operation=request.operation,
             target=target,
             value=value,
+            page_key=str(payload.get("page_key", "main")),
+            frame_key=payload.get("frame_key"),
             secret_grant_refs=list(payload.get("secret_grant_refs", [])),
         )
 

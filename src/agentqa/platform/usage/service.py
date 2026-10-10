@@ -236,6 +236,127 @@ class UsageLedgerService:
             unknown_calls=unknown_calls,
         )
 
+    async def record_price_snapshot(
+        self,
+        session: AsyncSession,
+        *,
+        route: ProviderRoute,
+        model: str,
+        currency: str,
+        basis: str,
+        input_per_million: Decimal | str | None = None,
+        output_per_million: Decimal | str | None = None,
+        source: str | None = None,
+    ) -> UUID:
+        snapshot_id = uuid4()
+        await session.execute(
+            sa.insert(tables.price_snapshots).values(
+                id=snapshot_id,
+                provider_route=route.value,
+                model=model,
+                currency=currency,
+                input_per_million=input_per_million,
+                output_per_million=output_per_million,
+                basis=basis,
+                source=source,
+            )
+        )
+        return snapshot_id
+
+    async def price_at(
+        self,
+        session: AsyncSession,
+        *,
+        route: ProviderRoute,
+        model: str,
+        at: datetime,
+    ) -> dict | None:
+        row = (
+            await session.execute(
+                sa.select(tables.price_snapshots)
+                .where(
+                    tables.price_snapshots.c.provider_route == route.value,
+                    tables.price_snapshots.c.model == model,
+                    tables.price_snapshots.c.created_at <= at,
+                )
+                .order_by(tables.price_snapshots.c.created_at.desc(), tables.price_snapshots.c.id.desc())
+                .limit(1)
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        return {
+            "snapshot_id": row.id,
+            "currency": row.currency,
+            "input_per_million": row.input_per_million,
+            "output_per_million": row.output_per_million,
+            "basis": row.basis,
+            "created_at": row.created_at,
+        }
+
+    async def usage_by_phase(self, session: AsyncSession, *, workspace_id: UUID, run_id: UUID) -> dict[str, dict]:
+        rows = (
+            await session.execute(
+                sa.select(
+                    tables.model_calls.c.purpose,
+                    tables.model_calls.c.record_state,
+                    tables.model_calls.c.usage_input,
+                    tables.model_calls.c.usage_output,
+                    tables.model_calls.c.usage_cached,
+                ).where(
+                    tables.model_calls.c.workspace_id == workspace_id,
+                    tables.model_calls.c.run_id == run_id,
+                )
+            )
+        ).all()
+        phases: dict[str, dict] = {}
+        for row in rows:
+            bucket = phases.setdefault(
+                row.purpose,
+                {"calls": 0, "settled": 0, "unknown": 0, "input_tokens": 0, "output_tokens": 0, "cached_tokens": 0},
+            )
+            bucket["calls"] += 1
+            if row.record_state == "settled":
+                bucket["settled"] += 1
+                bucket["input_tokens"] += row.usage_input or 0
+                bucket["output_tokens"] += row.usage_output or 0
+                bucket["cached_tokens"] += row.usage_cached or 0
+            else:
+                bucket["unknown"] += 1
+        return phases
+
+    async def wall_time_seconds(self, session: AsyncSession, *, workspace_id: UUID, run_id: UUID) -> dict:
+        rows = (
+            await session.execute(
+                sa.select(tables.model_calls.c.started_at, tables.model_calls.c.ended_at).where(
+                    tables.model_calls.c.workspace_id == workspace_id,
+                    tables.model_calls.c.run_id == run_id,
+                )
+            )
+        ).all()
+        intervals = [
+            (row.started_at, row.ended_at)
+            for row in rows
+            if row.started_at is not None and row.ended_at is not None and row.ended_at >= row.started_at
+        ]
+        unknown_intervals = sum(1 for row in rows if row.ended_at is None)
+        intervals.sort(key=lambda item: item[0])
+        total = 0.0
+        current_start = None
+        current_end = None
+        for start, end in intervals:
+            if current_start is None:
+                current_start, current_end = start, end
+                continue
+            if start <= current_end:
+                current_end = max(current_end, end)
+            else:
+                total += (current_end - current_start).total_seconds()
+                current_start, current_end = start, end
+        if current_start is not None and current_end is not None:
+            total += (current_end - current_start).total_seconds()
+        return {"wall_time_seconds": round(total, 3), "unknown_intervals": unknown_intervals}
+
 
 def _has_observed(usage: Usage) -> bool:
     return any(value is not None for value in (usage.input_tokens, usage.output_tokens, usage.cached_tokens))

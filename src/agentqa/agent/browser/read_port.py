@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from hashlib import sha256
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -10,6 +11,7 @@ from playwright.async_api import Page
 from agentqa.agent.browser.action_registry import build_locator
 from agentqa.agent.browser.capture import SafeEvidenceService
 from agentqa.agent.browser.contexts import ContextRegistry
+from agentqa.agent.browser.journals import DownloadJournal, DownloadRecord, NetworkJournal, NetworkRecord
 from agentqa.contracts.case import (
     AndCondition,
     CaptureCondition,
@@ -24,6 +26,7 @@ from agentqa.contracts.values import LiteralValue
 
 SEMANTIC_SCRIPT_VERSION = 1
 MAX_CANDIDATES = 200
+MAX_NETWORK_EXCERPT = 2048
 SEMANTIC_SCRIPT = """
 () => {
   const nodes = Array.from(
@@ -52,10 +55,18 @@ SEMANTIC_SCRIPT = """
 
 
 class PlaywrightReadPort:
-    def __init__(self, contexts: ContextRegistry, evidence: SafeEvidenceService) -> None:
+    def __init__(
+        self,
+        contexts: ContextRegistry,
+        evidence: SafeEvidenceService,
+        network: NetworkJournal | None = None,
+        downloads: DownloadJournal | None = None,
+    ) -> None:
         self._contexts = contexts
         self._evidence = evidence
-        self._downloads: dict[str, list[dict[str, str]]] = {}
+        self._network = network or NetworkJournal()
+        self._downloads = downloads or DownloadJournal()
+        self._download_metadata: dict[str, list[dict[str, str]]] = {}
         self._wired_pages: set[int] = set()
 
     async def observe(self, context_key: str, mode: Modality = Modality.SEMANTIC) -> Observation:
@@ -63,7 +74,7 @@ class PlaywrightReadPort:
             raise CapabilityUnavailableObservation(f"mode '{mode.value}' chưa được implement")
         lane = self._contexts.lane(context_key)
         page = await self._contexts.page(context_key)
-        self._wire_downloads(context_key, page)
+        self._wire_page(context_key, page)
         candidates = await page.evaluate(SEMANTIC_SCRIPT)
         aria = await page.locator("body").aria_snapshot()
         snapshot = {
@@ -97,14 +108,19 @@ class PlaywrightReadPort:
 
     async def probe(self, condition: Condition, context_key: str) -> ProbeOutcome:
         page = await self._contexts.page(context_key)
+        root = await self._contexts.locator_root(context_key)
         try:
-            satisfied = await self._evaluate_condition(page, condition)
+            satisfied = await self._evaluate_condition(root, page, condition)
         except ConditionUnsupported as exc:
             return ProbeOutcome(satisfied=False, error_code=exc.code)
         return ProbeOutcome(satisfied=satisfied)
 
     async def read_download_metadata(self, context_key: str) -> dict[str, str]:
-        downloads = self._downloads.get(context_key, [])
+        records = self._downloads.entries(context_key)
+        if records:
+            latest = records[-1]
+            return {"suggested_filename": latest.filename, "sha256": latest.sha256 or ""}
+        downloads = self._download_metadata.get(context_key, [])
         if not downloads:
             return {}
         latest = downloads[-1]
@@ -113,24 +129,34 @@ class PlaywrightReadPort:
             "url": latest.get("url", ""),
         }
 
+    def download_records(self, context_key: str) -> list[DownloadRecord]:
+        return self._downloads.entries(context_key)
+
+    def network_records(self, context_key: str) -> list[NetworkRecord]:
+        return self._network.entries(context_key)
+
+    async def screenshot_png(self, context_key: str) -> bytes:
+        page = await self._contexts.page(context_key)
+        return await page.screenshot(type="png", full_page=False)
+
     async def capture_safe_evidence(self, context_key: str, label: str) -> str:
         page = await self._contexts.page(context_key)
         png = await page.screenshot(full_page=True)
         return self._evidence.emit_image(label, png, [])
 
-    async def _evaluate_condition(self, page: Page, condition: Condition) -> bool:
+    async def _evaluate_condition(self, root, page: Page, condition: Condition) -> bool:
         if isinstance(condition, AndCondition):
             for child in condition.conditions:
-                if not await self._evaluate_condition(page, child):
+                if not await self._evaluate_condition(root, page, child):
                     return False
             return True
         if isinstance(condition, OrCondition):
             for child in condition.conditions:
-                if await self._evaluate_condition(page, child):
+                if await self._evaluate_condition(root, page, child):
                     return True
             return False
         if isinstance(condition, NotCondition):
-            return not await self._evaluate_condition(page, condition.condition)
+            return not await self._evaluate_condition(root, page, condition.condition)
         if isinstance(condition, CaptureCondition):
             raise ConditionUnsupported(ErrorCode.INVALID_CAPTURE)
         if not isinstance(condition, ComparisonCondition):
@@ -141,8 +167,8 @@ class PlaywrightReadPort:
             if not isinstance(expected, str):
                 raise ConditionUnsupported(ErrorCode.CAPABILITY_UNAVAILABLE)
             return urlsplit(page.url).path == expected
-        locator = build_locator(page, condition.target) if condition.target is not None else None
-        if comparator in ("exists", "unique", "visible", "count_equals", "count_greater_or_equal"):
+        locator = build_locator(root, condition.target) if condition.target is not None else None
+        if comparator in ("exists", "unique", "visible", "hidden", "count_equals", "count_greater_or_equal"):
             if locator is None:
                 raise ConditionUnsupported(ErrorCode.CAPABILITY_UNAVAILABLE)
             count = await locator.count()
@@ -154,10 +180,12 @@ class PlaywrightReadPort:
                 return isinstance(expected, int | float) and count == int(expected)
             if comparator == "count_greater_or_equal":
                 return isinstance(expected, int | float) and count >= int(expected)
-            visible_expected = bool(expected) if expected is not None else True
             visible = count > 0 and await locator.first.is_visible()
+            if comparator == "hidden":
+                return not visible
+            visible_expected = bool(expected) if expected is not None else True
             return visible == visible_expected
-        if comparator in ("text_equals", "equals", "contains", "not_equals"):
+        if comparator in ("text_equals", "equals", "contains", "not_equals", "text_matches"):
             if locator is None or not isinstance(expected, str):
                 raise ConditionUnsupported(ErrorCode.CAPABILITY_UNAVAILABLE)
             count = await locator.count()
@@ -168,6 +196,10 @@ class PlaywrightReadPort:
             text = (await locator.first.inner_text()).strip()
             if comparator == "contains":
                 return expected in text
+            if comparator == "text_matches":
+                import re
+
+                return re.search(expected, text) is not None
             return text == expected
         if comparator == "attribute_equals":
             if locator is None or condition.target is None or not condition.target.attributes:
@@ -175,19 +207,64 @@ class PlaywrightReadPort:
             attribute, attribute_expected = next(iter(condition.target.attributes.items()))
             value = await locator.first.get_attribute(attribute)
             return value == (attribute_expected if expected is None else expected)
+        if comparator in ("value_equals", "state_checked", "state_enabled"):
+            if locator is None:
+                raise ConditionUnsupported(ErrorCode.CAPABILITY_UNAVAILABLE)
+            count = await locator.count()
+            if count != 1:
+                raise ConditionUnsupported(ErrorCode.LOCATOR_AMBIGUOUS if count > 1 else ErrorCode.LOCATOR_MISSING)
+            if comparator == "value_equals":
+                value = await locator.first.input_value()
+                return value == (expected if isinstance(expected, str) else "")
+            if comparator == "state_checked":
+                checked = await locator.first.is_checked()
+                return checked == (bool(expected) if expected is not None else True)
+            enabled = await locator.first.is_enabled()
+            return enabled == (bool(expected) if expected is not None else True)
         raise ConditionUnsupported(ErrorCode.CAPABILITY_UNAVAILABLE)
 
-    def _wire_downloads(self, context_key: str, page: Page) -> None:
+    def _wire_page(self, context_key: str, page: Page) -> None:
         if id(page) in self._wired_pages:
             return
         self._wired_pages.add(id(page))
 
         def record(download) -> None:
-            self._downloads.setdefault(context_key, []).append(
+            self._download_metadata.setdefault(context_key, []).append(
                 {"suggested_filename": download.suggested_filename, "url": download.url}
             )
 
+        def record_response(response) -> None:
+            try:
+                request = response.request
+                if request.resource_type not in ("xhr", "fetch", "document"):
+                    return
+                body_digest = None
+                body_excerpt = None
+                try:
+                    body = response.body()
+                except Exception:
+                    body = None
+                if body:
+                    body_digest = sha256(body).hexdigest()
+                    content_type = (response.headers or {}).get("content-type", "")
+                    if "json" in content_type and len(body) <= MAX_NETWORK_EXCERPT * 4:
+                        excerpt = body.decode("utf-8", errors="replace")[:MAX_NETWORK_EXCERPT]
+                        body_excerpt = self._evidence.sanitize_text(excerpt)
+                self._network.record(
+                    context_key,
+                    NetworkRecord(
+                        method=request.method,
+                        url=self._evidence.sanitize_url(response.url),
+                        status=response.status,
+                        body_digest=body_digest,
+                        body_excerpt=body_excerpt,
+                    ),
+                )
+            except Exception:
+                return
+
         page.on("download", record)
+        page.on("response", record_response)
 
 
 class CapabilityUnavailableObservation(RuntimeError):

@@ -161,6 +161,8 @@ class RunWorker:
             observation_mode=str(snapshot.content.get("observation_mode", "semantic")),
             snapshot_digest=str(snapshot.content_digest or ""),
             provisional=bool(snapshot.content.get("provisional")),
+            case_id=revision.case_id if revision is not None else None,
+            case_revision_id=execution.case_revision_id,
         )
 
     async def _pending_control(self, workspace_id: UUID, run_id: UUID) -> UUID | None:
@@ -208,6 +210,45 @@ class RunWorker:
                             },
                             ensure_ascii=False,
                         ),
+                    )
+                )
+            for record in outcome.healing_records:
+                await session.execute(
+                    sa.insert(tables.healing_records).values(
+                        workspace_id=spec.workspace_id,
+                        run_id=spec.run_id,
+                        execution_id=spec.execution_id,
+                        attempt_id=spec.attempt_id,
+                        actor=record.actor.value,
+                        node_id=record.node_id,
+                        opportunity_id=record.opportunity_id,
+                        attempt_ref=record.attempt_id,
+                        decision=record.decision.value,
+                        ranking=record.ranking.model_dump(mode="json") if record.ranking is not None else None,
+                        expected_signature=record.expected_signature,
+                        actual_signature=record.actual_signature,
+                        original_target=(
+                            record.original_target.model_dump(mode="json")
+                            if record.original_target is not None
+                            else None
+                        ),
+                        actual_target=(
+                            record.actual_target.model_dump(mode="json") if record.actual_target is not None else None
+                        ),
+                        dispatch_outcome=record.dispatch_outcome,
+                        guard_checks=list(record.guard_checks),
+                        postconditions_ok=record.postconditions_ok,
+                        refusal_reason=record.refusal_reason,
+                        error=record.error,
+                        proposal=record.proposal.model_dump(mode="json") if record.proposal is not None else None,
+                        source_run_id=(
+                            record.proposal.source_run_id
+                            if record.proposal is not None and record.proposal.source_run_id is not None
+                            else spec.run_id
+                        ),
+                        case_id=spec.case_id,
+                        case_revision_id=spec.case_revision_id,
+                        recorded_at=record.recorded_at,
                     )
                 )
             rows = (

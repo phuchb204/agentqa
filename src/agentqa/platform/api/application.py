@@ -13,6 +13,7 @@ from agentqa.platform.api.controls import router as controls_router
 from agentqa.platform.api.error_models import ApiError, ErrorResponse, FieldErrorModel, HealthResponse
 from agentqa.platform.api.events import router as events_router
 from agentqa.platform.api.exploration import router as exploration_router
+from agentqa.platform.api.reports import router as reports_router
 from agentqa.platform.api.requirements import router as requirements_router
 from agentqa.platform.api.revisions import router as revisions_router
 from agentqa.platform.api.runs import router as runs_router
@@ -127,6 +128,7 @@ def create_application(runtime: PlatformRuntime | None = None) -> FastAPI:
     app.include_router(artifacts_router)
     app.include_router(streams_router)
     app.include_router(revisions_router)
+    app.include_router(reports_router)
     app.add_api_route("/health/live", _health_live, methods=["GET"], response_model=HealthResponse)
     app.add_api_route("/api/v1/schemas", _list_schemas, methods=["GET"], response_model=None)
     app.add_api_route(

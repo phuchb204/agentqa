@@ -7,6 +7,7 @@ import json
 from typing import Any
 from uuid import UUID
 
+from agentqa.contracts.calibration import CalibrationProfile
 from agentqa.contracts.case import CaseContent
 from agentqa.platform.runs.coordinator import ExecutionSpec, outcome_to_dict
 from agentqa.platform.supervisor.commands import CommandRequest
@@ -173,6 +174,13 @@ class SupervisorServer:
                     observation_mode=str(payload.get("observation_mode", "semantic")),
                     snapshot_digest=str(payload.get("snapshot_digest", "")),
                     provisional=bool(payload.get("provisional", False)),
+                    healing_profile=(
+                        CalibrationProfile.model_validate(payload["healing_profile"])
+                        if payload.get("healing_profile")
+                        else None
+                    ),
+                    case_id=UUID(payload["case_id"]) if payload.get("case_id") else None,
+                    case_revision_id=(UUID(payload["case_revision_id"]) if payload.get("case_revision_id") else None),
                 )
                 outcome = await self._coordinator.execute(spec)
                 return {"ok": True, "result": outcome_to_dict(outcome)}

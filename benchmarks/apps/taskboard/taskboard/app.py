@@ -6,7 +6,7 @@ import secrets
 from typing import Annotated, Any, Literal
 
 from fastapi import Body, FastAPI, Form, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
 
 from taskboard.state import NamespaceError, TaskboardStore
@@ -87,6 +87,72 @@ def _render_items(namespace: str, store: TaskboardStore) -> str:
         '<button type="submit" name="action" value="create">Thêm việc</button>'
         '<button type="submit" name="action" value="async">Thêm việc không chờ</button>'
         "</form>" + listing
+    )
+
+
+LAB_SCRIPT = """
+<script>
+let dbl = 0;
+document.getElementById('lab-dbl').addEventListener('dblclick', () => {
+  dbl += 1;
+  document.getElementById('dbl-count').textContent = String(dbl);
+});
+const text = document.getElementById('lab-text');
+text.addEventListener('input', () => { document.getElementById('lab-echo').textContent = text.value; });
+const press = document.getElementById('lab-press');
+press.addEventListener('keydown', (event) => {
+  document.getElementById('lab-press-echo').textContent = 'key:' + event.key;
+});
+const select = document.getElementById('lab-select');
+select.addEventListener('change', () => {
+  document.getElementById('lab-select-value').textContent = select.value;
+});
+document.getElementById('lab-hover').addEventListener('mouseover', () => {
+  document.getElementById('hover-secret').style.display = 'block';
+});
+document.getElementById('lab-file').addEventListener('change', () => {
+  const files = document.getElementById('lab-file').files;
+  document.getElementById('lab-file-name').textContent = files.length ? files[0].name : '';
+});
+document.getElementById('lab-dialog').addEventListener('click', () => {
+  const ok = confirm('Xác nhận thao tác');
+  document.getElementById('lab-dialog-result').textContent = ok ? 'đồng ý' : 'từ chối';
+});
+const host = document.getElementById('lab-shadow-host');
+const shadow = host.attachShadow({ mode: 'open' });
+shadow.innerHTML = '<button id="shadow-btn">Nút shadow</button>';
+let shadowCount = 0;
+shadow.getElementById('shadow-btn').addEventListener('click', () => {
+  shadowCount += 1;
+  document.getElementById('lab-shadow-count').textContent = String(shadowCount);
+});
+</script>
+"""
+
+
+def _render_lab(namespace: str) -> str:
+    return (
+        '<p id="dbl-count">0</p><button id="lab-dbl">Nhấp đôi</button>'
+        '<p><input id="lab-text" type="text" aria-label="Ô nhập văn bản"></p>'
+        '<p id="lab-echo"></p>'
+        '<p><input id="lab-press" type="text" aria-label="Ô nhập phím"></p>'
+        '<p id="lab-press-echo"></p>'
+        '<p><input type="checkbox" id="lab-check"><label for="lab-check">Bật</label></p>'
+        '<p><select id="lab-select" aria-label="Chọn mục"><option value="">--</option>'
+        '<option value="mot">Một</option><option value="hai">Hai</option></select></p>'
+        '<p id="lab-select-value"></p>'
+        '<div id="lab-hover" role="button">Vùng rê</div>'
+        '<p id="hover-secret" style="display:none">Đã rê thấy</p>'
+        '<div id="lab-scroll" style="height:80px;overflow:auto"><div style="height:600px"></div>'
+        '<p id="scroll-bottom">Cuối vùng cuộn</p></div>'
+        '<p><input type="file" id="lab-file" aria-label="Tệp tải lên"></p>'
+        '<p id="lab-file-name"></p>'
+        '<button id="lab-dialog">Mở hộp thoại</button><p id="lab-dialog-result"></p>'
+        f'<p><a id="lab-download" href="/{namespace}/lab/download" download="bao-cao.txt">Tải báo cáo</a></p>'
+        f'<p><a id="lab-newtab" href="/{namespace}/lab/aux" target="_blank">Mở tab phụ</a></p>'
+        f'<iframe id="lab-frame" name="lab-frame" src="/{namespace}/lab/frame" width="320" height="120"></iframe>'
+        '<p><span id="lab-shadow-count">0</span></p>'
+        '<div id="lab-shadow-host"></div>' + LAB_SCRIPT
     )
 
 
@@ -216,6 +282,32 @@ def create_taskboard_app(control_token: str, store: TaskboardStore | None = None
             return RedirectResponse(url=f"/{namespace}/login", status_code=303)
         taskboard.delete_item(namespace, item_id)
         return _page("Danh sách việc", _render_items(namespace, taskboard))
+
+    @app.get("/{namespace}/lab", response_class=HTMLResponse)
+    def lab_page(request: Request, namespace: str) -> Any:
+        if session_namespace(request, namespace) is None:
+            return RedirectResponse(url=f"/{namespace}/login", status_code=303)
+        return _page("Phòng thao tác", _render_lab(namespace))
+
+    @app.get("/{namespace}/lab/aux", response_class=HTMLResponse)
+    def lab_aux(request: Request, namespace: str) -> Any:
+        if session_namespace(request, namespace) is None:
+            return RedirectResponse(url=f"/{namespace}/login", status_code=303)
+        return _page("Trang phụ", '<p id="aux-marker">Trang phụ đã mở</p>')
+
+    @app.get("/{namespace}/lab/frame", response_class=HTMLResponse)
+    def lab_frame(request: Request, namespace: str) -> Any:
+        return _page(
+            "Khung phụ",
+            '<button id="frame-btn" onclick="this.textContent=\'Đã bấm\'">Nút trong khung</button>',
+        )
+
+    @app.get("/{namespace}/lab/download")
+    def lab_download(request: Request, namespace: str) -> Any:
+        return PlainTextResponse(
+            "Nội dung báo cáo kiểm thử",
+            headers={"Content-Disposition": 'attachment; filename="bao-cao.txt"'},
+        )
 
     @app.get("/_control/version")
     def control_version(x_taskboard_control: Annotated[str | None, Header()] = None) -> JSONResponse:

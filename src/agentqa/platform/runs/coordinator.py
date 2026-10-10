@@ -10,14 +10,19 @@ from uuid import UUID, uuid4
 
 from agentqa.agent.browser import PlaywrightReadPort
 from agentqa.agent.browser.contexts import ContextRegistry
+from agentqa.agent.healing import HealContext, Healer, build_healer
 from agentqa.agent.identity import TargetGuard
 from agentqa.agent.replay import PlaywrightSceneProvider, ReplayRunner, validate_case
 from agentqa.agent.replay.runner import ActionOutcomeView
+from agentqa.contracts.calibration import CalibrationProfile
 from agentqa.contracts.case import ActionNode, CaseContent, CheckpointNode
 from agentqa.contracts.errors import AgentQAValidationError
+from agentqa.contracts.healing import HealingActor, HealingDecision, HealingRecord
+from agentqa.contracts.identity import TargetDescriptor
 from agentqa.contracts.observation import Modality, Observation, RedactionStatus
 from agentqa.contracts.policies import PolicyKind, RunMode, validate_mode_policy_modality
 from agentqa.contracts.runs import ExecutionStatus
+from agentqa.contracts.values import LiteralValue
 from agentqa.contracts.verification import (
     AssertionResult,
     AssertionStatus,
@@ -39,11 +44,12 @@ from agentqa.verify import (
     CompletionPlan,
     ExecutionProof,
     GateContext,
+    assertion_applicability,
     evaluate_completion,
     evaluate_gate,
     reduce_verdict,
 )
-from agentqa.verify.evaluators import evaluate_checkpoint
+from agentqa.verify.evaluators import evaluate_assertion, evaluate_checkpoint
 
 AGENT_POLICIES = frozenset({PolicyKind.LLM.value, PolicyKind.JEV_CASCADE.value})
 
@@ -68,6 +74,9 @@ class ExecutionSpec:
     observation_mode: str = "semantic"
     snapshot_digest: str = ""
     provisional: bool = False
+    healing_profile: CalibrationProfile | None = None
+    case_id: UUID | None = None
+    case_revision_id: UUID | None = None
 
 
 @dataclass
@@ -88,6 +97,7 @@ class ExecutionOutcome:
     outcome_probe: dict[str, Any] | None = None
     degraded: bool = False
     policy_versions: list[str] = field(default_factory=list)
+    healing_records: list[HealingRecord] = field(default_factory=list)
 
 
 class BridgedRunEventRecorder:
@@ -163,13 +173,142 @@ class _CoordinatorHooks:
         self.unknown_commands: list[str] = []
         self.storage_failures: list[str] = []
         self.evidence_statuses: dict[str, EvidenceStatus] = {}
+        self.healing_records: list[HealingRecord] = []
+        self.captures: dict[str, object] = {}
 
     async def current_scene_version(self) -> int:
         view = await self._coordinator.runtime.session_view(self._session_key)
         return int(view["scene_version"]) if view else 1
 
+    async def sync_captures(self, captures: dict[str, object]) -> None:
+        self.captures = dict(captures)
+
+    async def probe_condition(self, condition) -> bool | None:
+        try:
+            probe = await self._coordinator.read_port.probe(condition, self._context_key)
+        except Exception:
+            self.storage_failures.append("probe_condition")
+            return None
+        if probe.error_code is not None:
+            return None
+        return bool(probe.satisfied)
+
+    async def capture_probe(self, probe) -> tuple[bool, str | None]:
+        from agentqa.contracts.verification import AssertionSpec, AssertionStatus, Comparator
+
+        spec = AssertionSpec(
+            id="capture",
+            comparator=probe.comparator,
+            target=probe.target,
+            expected=probe.expected,
+        )
+        facts = await capture_facts(
+            self._coordinator.contexts,
+            self._context_key,
+            [spec],
+            {},
+            captures=self.captures,
+            parameters=dict(self._spec.parameters),
+            read_port=self._coordinator.read_port,
+        )
+        outcome = evaluate_assertion(spec, facts)
+        satisfied = outcome.status == AssertionStatus.PASSED
+        observed = outcome.observed
+        if probe.target is not None:
+            if probe.comparator in (
+                Comparator.COUNT_EQUALS,
+                Comparator.COUNT_GREATER_OR_EQUAL,
+                Comparator.UNIQUE,
+                Comparator.EXISTS,
+                Comparator.ABSENT,
+            ):
+                observed = str(facts.count(probe.target))
+            elif probe.comparator in (Comparator.VISIBLE, Comparator.HIDDEN):
+                observed = str(facts.visible(probe.target))
+        return satisfied, observed
+
     async def scene(self):
         return await self._coordinator.scene_provider.scene(self._context_key)
+
+    async def record_healing(self, record: HealingRecord) -> None:
+        if record.proposal is not None and record.proposal.source_run_id is None:
+            record = record.model_copy(
+                update={"proposal": record.proposal.model_copy(update={"source_run_id": self._spec.run_id})}
+            )
+        self.healing_records.append(record)
+        if record.decision == HealingDecision.RECOVERED:
+            event_type = "healing.accepted"
+            payload: dict[str, Any] = {"attempt_id": record.attempt_id, "node_id": record.node_id}
+        else:
+            event_type = "healing.refused"
+            payload = {
+                "opportunity_id": record.opportunity_id,
+                "reason": record.refusal_reason or record.error or "unknown",
+            }
+        await self._coordinator.recorder.record(
+            workspace_id=self._spec.workspace_id,
+            principal_id=self._spec.principal_id,
+            run_id=self._spec.run_id,
+            execution_id=self._spec.execution_id,
+            event_type=event_type,
+            actor=self._spec.actor,
+            payload=payload,
+        )
+
+    async def evaluate_postcondition(self, node: ActionNode, name: str) -> bool | None:
+        definition = self._spec.case.postcondition_defs.get(name)
+        if definition is None:
+            return None
+        try:
+            probe = await self._coordinator.read_port.probe(definition.condition, self._context_key)
+        except Exception:
+            self.storage_failures.append(f"postcondition:{name}")
+            return None
+        if probe.error_code is not None:
+            return None
+        return bool(probe.satisfied)
+
+    async def _recover_evidence_targets(
+        self,
+        node: CheckpointNode,
+        initial_facts: Any,
+        observation: Observation,
+    ) -> dict[str, TargetDescriptor]:
+        healer = self._coordinator.active_healer
+        if healer is None or self._spec.policy == "replay_strict":
+            return {}
+        pending = [
+            assertion
+            for assertion in node.assertions
+            if assertion.target is not None
+            and not _expects_absence(assertion)
+            and initial_facts.count(assertion.target) != 1
+        ]
+        if not pending:
+            return {}
+        try:
+            scene = await self._coordinator.scene_provider.scene(self._context_key)
+        except Exception:
+            self.storage_failures.append("healing_scene")
+            return {}
+        overrides: dict[str, TargetDescriptor] = {}
+        for assertion in pending:
+            target = assertion.target
+            if target is None:
+                continue
+            decision = await healer.recover(
+                target,
+                scene,
+                HealContext(
+                    node_id=f"{node.id}:{assertion.id}",
+                    actor=HealingActor.EVIDENCE,
+                    scene_version=observation.version,
+                ),
+            )
+            await self.record_healing(decision.record)
+            if decision.recovered_target is not None:
+                overrides[assertion.id] = decision.recovered_target
+        return overrides
 
     async def dispatch_action(self, node: ActionNode, scene_version: int) -> ActionOutcomeView:
         payload: dict[str, Any] = {}
@@ -177,6 +316,11 @@ class _CoordinatorHooks:
             payload["target"] = node.target.model_dump(mode="json")
         if node.value is not None:
             payload["value"] = node.value.model_dump(mode="json")
+        if node.context is not None:
+            if node.context.page:
+                payload["page_key"] = node.context.page
+            if node.context.frame:
+                payload["frame_key"] = node.context.frame
         if node.operation.value == "navigate" and isinstance(payload.get("value"), dict):
             url = payload["value"].get("value")
             if isinstance(url, str) and url.startswith("/"):
@@ -254,11 +398,25 @@ class _CoordinatorHooks:
                     payload={"checkpoint_id": node.id, "assertion_id": assertion.id},
                 )
         self.evidence_statuses.update(evidence_map)
+        initial_facts = await capture_facts(
+            self._coordinator.contexts,
+            self._context_key,
+            list(node.assertions),
+            evidence_map,
+            captures=self.captures,
+            parameters=dict(self._spec.parameters),
+            read_port=self._coordinator.read_port,
+        )
+        overrides = await self._recover_evidence_targets(node, initial_facts, observation)
         facts = await capture_facts(
             self._coordinator.contexts,
             self._context_key,
             list(node.assertions),
             evidence_map,
+            overrides=overrides,
+            captures=self.captures,
+            parameters=dict(self._spec.parameters),
+            read_port=self._coordinator.read_port,
         )
         request = CheckpointEvaluationRequest(
             run_id=self._spec.run_id,
@@ -324,6 +482,7 @@ class RunCoordinator:
         self._active_spec: ExecutionSpec | None = None
         self.agent_models = agent_models or AgentModels()
         self.taint = taint
+        self.active_healer: Healer | None = None
 
     async def apply_control(self, control_id: UUID) -> dict[str, Any]:
         result = await self.runtime.apply_control(control_id)
@@ -431,6 +590,7 @@ class RunCoordinator:
         )
         await self.contexts.open(context_key)
         hooks = _CoordinatorHooks(self, spec, session_key, context_key)
+        self.active_healer = self._build_healer(spec)
         if agent_policy:
             bundle = await run_agent_bundle(
                 self,
@@ -441,9 +601,10 @@ class RunCoordinator:
                 taint=self.taint,
             )
         else:
-            runner = ReplayRunner(case, hooks=hooks, guard=self.guard, actor=spec.actor)
+            runner = ReplayRunner(case, hooks=hooks, guard=self.guard, healer=self.active_healer, actor=spec.actor)
             replay = await runner.run()
             bundle = bundle_from_replay(replay)
+        self.active_healer = None
         if bundle.aborted_reason is not None:
             await self.recorder.record(
                 workspace_id=spec.workspace_id,
@@ -459,25 +620,27 @@ class RunCoordinator:
                 },
             )
         plan = CompletionPlan.from_case(case)
-        completion = evaluate_completion(
-            plan,
-            ExecutionProof(
-                visited_nodes=frozenset(bundle.visited_nodes),
-                branch_decisions=dict(bundle.branch_decisions),
-                checkpoint_receipts=frozenset(bundle.checkpoint_receipts),
-            ),
+        proof = ExecutionProof(
+            visited_nodes=frozenset(bundle.visited_nodes),
+            branch_decisions=dict(bundle.branch_decisions),
+            checkpoint_receipts=frozenset(bundle.checkpoint_receipts),
         )
-        applicable = {
-            assertion: plan.assertion_checkpoints.get(assertion) in bundle.checkpoint_receipts
-            for assertion in plan.required_assertions
-        }
+        completion = evaluate_completion(plan, proof)
+        applicable = {}
+        for assertion in plan.required_assertions:
+            state, _reason = assertion_applicability(plan, proof, assertion)
+            applicable[assertion] = bool(state)
         status = _execution_status(bundle.aborted_reason)
+        healing_records = list(hooks.healing_records) or list(bundle.healing_records)
+        healed = any(record.decision == HealingDecision.RECOVERED for record in healing_records)
+        healing_guards_ok = self._healing_guards_ok(healing_records)
         attempt = AttemptEvidence(
             attempt_no=spec.fence_epoch,
             execution_status=status,
             results=tuple(bundle.assertion_results),
             completion=completion,
             applicable=applicable,
+            recovered=healed,
             revision_ready=not spec.provisional,
         )
         run_result = reduce_verdict(spec.run_id, [attempt], required_assertions=plan.required_assertions)
@@ -493,6 +656,8 @@ class RunCoordinator:
                 completed=completion.complete,
                 revision_ready=not spec.provisional,
                 evidence_ok=evidence_ok,
+                healed=healed,
+                healing_guards_ok=healing_guards_ok,
                 degraded=bundle.degraded,
                 provisional=spec.provisional,
             ),
@@ -533,7 +698,8 @@ class RunCoordinator:
             gate_reasons=list(gate.reasons),
             reasons=list(run_result.reasons)
             + (["cleanup_failed"] if cleanup_failed else [])
-            + (["provisional"] if spec.provisional else []),
+            + (["provisional"] if spec.provisional else [])
+            + (["healed"] if healed else []),
             capability=capability.as_dict(),
             steps=[
                 {
@@ -552,8 +718,28 @@ class RunCoordinator:
             outcome_probe=outcome_probe,
             degraded=bundle.degraded,
             policy_versions=list(bundle.policy_versions),
+            healing_records=healing_records,
         )
         return outcome
+
+    def _build_healer(self, spec: ExecutionSpec) -> Healer | None:
+        if spec.policy != "replay_healing" or spec.healing_profile is None:
+            return None
+        return build_healer(spec.healing_profile, decision=self.agent_models.decision)
+
+    @staticmethod
+    def _healing_guards_ok(records: list[HealingRecord]) -> bool:
+        recovered = [record for record in records if record.decision == HealingDecision.RECOVERED]
+        if not recovered:
+            return False
+        for record in recovered:
+            if not record.guard_checks:
+                return False
+            if record.postconditions_ok is False:
+                return False
+            if record.actor == HealingActor.ACTION and record.dispatch_outcome != "succeeded":
+                return False
+        return True
 
     def _terminal(
         self,
@@ -612,6 +798,7 @@ def outcome_to_dict(outcome: ExecutionOutcome) -> dict[str, Any]:
         "outcome_probe": outcome.outcome_probe,
         "degraded": outcome.degraded,
         "policy_versions": list(outcome.policy_versions),
+        "healing_records": [record.model_dump(mode="json") for record in outcome.healing_records],
     }
 
 
@@ -640,6 +827,7 @@ def outcome_from_dict(data: dict[str, Any]) -> ExecutionOutcome:
         outcome_probe=data.get("outcome_probe"),
         degraded=bool(data.get("degraded", False)),
         policy_versions=list(data.get("policy_versions", [])),
+        healing_records=[HealingRecord.model_validate(item) for item in data.get("healing_records", [])],
     )
 
 
@@ -662,6 +850,12 @@ def _substitute(nodes: list[dict[str, Any]], parameters: dict[str, str]) -> None
         target = node.get("target")
         if isinstance(target, dict):
             _substitute_target(target, parameters)
+        probe = node.get("probe")
+        if isinstance(probe, dict):
+            _substitute_condition(probe, parameters)
+        condition = node.get("condition")
+        if isinstance(condition, dict):
+            _substitute_condition(condition, parameters)
         for assertion in node.get("assertions", []):
             _substitute_assertion(assertion, parameters)
         _substitute(node.get("then_nodes", []), parameters)
@@ -708,3 +902,13 @@ def _execution_status(aborted_reason: str | None) -> ExecutionStatus:
     if "control_cancelled" in aborted_reason:
         return ExecutionStatus.CANCELLED
     return ExecutionStatus.ERROR
+
+
+def _expects_absence(assertion: Any) -> bool:
+    from agentqa.contracts.verification import Comparator
+
+    expected = assertion.expected
+    value = expected.value if isinstance(expected, LiteralValue) else None
+    if assertion.comparator in (Comparator.COUNT_EQUALS, Comparator.COUNT_GREATER_OR_EQUAL) and value == 0:
+        return True
+    return assertion.comparator in (Comparator.VISIBLE, Comparator.EXISTS) and value is False

@@ -26,6 +26,7 @@ class MessagePurpose(StrEnum):
     FINISH = "finish"
     REPAIR = "repair"
     VALUE_GENERATION = "value_generation"
+    DIAGNOSTIC = "diagnostic"
 
 
 class ModelCallOutcome(StrEnum):

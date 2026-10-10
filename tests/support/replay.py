@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
@@ -31,27 +32,33 @@ class ReplaySupervisor:
     def run_execution(self, spec: ExecutionSpec) -> dict[str, Any]:
         client = self.process.client()
         try:
-            response = client.request(
-                {
-                    "op": "run_execution",
-                    "workspace_id": str(spec.workspace_id),
-                    "principal_id": str(spec.principal_id),
-                    "run_id": str(spec.run_id),
-                    "execution_id": str(spec.execution_id),
-                    "attempt_id": str(spec.attempt_id),
-                    "logical_key": spec.logical_key,
-                    "case": spec.case.model_dump(mode="json"),
-                    "target_base_url": spec.target_base_url,
-                    "fixture_ref": spec.fixture_ref,
-                    "namespace": spec.namespace,
-                    "parameters": spec.parameters,
-                    "gate_profile": spec.gate_profile,
-                    "fence_epoch": spec.fence_epoch,
-                    "policy": spec.policy,
-                    "observation_mode": spec.observation_mode,
-                    "snapshot_digest": spec.snapshot_digest,
-                }
-            )
+            payload: dict[str, Any] = {
+                "op": "run_execution",
+                "workspace_id": str(spec.workspace_id),
+                "principal_id": str(spec.principal_id),
+                "run_id": str(spec.run_id),
+                "execution_id": str(spec.execution_id),
+                "attempt_id": str(spec.attempt_id),
+                "logical_key": spec.logical_key,
+                "case": spec.case.model_dump(mode="json"),
+                "target_base_url": spec.target_base_url,
+                "fixture_ref": spec.fixture_ref,
+                "namespace": spec.namespace,
+                "parameters": spec.parameters,
+                "gate_profile": spec.gate_profile,
+                "fence_epoch": spec.fence_epoch,
+                "policy": spec.policy,
+                "observation_mode": spec.observation_mode,
+                "snapshot_digest": spec.snapshot_digest,
+                "provisional": spec.provisional,
+            }
+            if spec.healing_profile is not None:
+                payload["healing_profile"] = spec.healing_profile.model_dump(mode="json")
+            if spec.case_id is not None:
+                payload["case_id"] = str(spec.case_id)
+            if spec.case_revision_id is not None:
+                payload["case_revision_id"] = str(spec.case_revision_id)
+            response = client.request(payload)
         finally:
             client.close_socket()
         assert response.get("ok") is True, response
@@ -142,6 +149,18 @@ def execution_key(run_id: UUID) -> str:
     return str(run_id)[:8]
 
 
+class HealingWorker(RunWorker):
+    def __init__(self, *, healing_profile, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._healing_profile = healing_profile
+
+    async def _load(self, execution_id: UUID) -> ExecutionSpec:
+        spec = await super()._load(execution_id)
+        if self._healing_profile is None:
+            return spec
+        return dataclasses.replace(spec, healing_profile=self._healing_profile)
+
+
 def build_replay_harness(
     *,
     engines: dict,
@@ -153,6 +172,7 @@ def build_replay_harness(
     fault_storage: bool = False,
     agent_models: bool = False,
     agent_script: str = "",
+    healing_profile=None,
 ) -> ReplayHarness:
     supervisor = start_replay_supervisor(
         dsn=test_db.dsn(ROLE_SUPERVISOR),
@@ -174,14 +194,26 @@ def build_replay_harness(
         principal_id=principal_id,
         slot_capacity=4,
     )
-    worker = RunWorker(
-        queue=queue,
-        coordinator=remote,
-        recorder=recorder,
-        engine=engines[ROLE_WORKER],
-        principal_id=principal_id,
-        workspace_id=workspace_id,
-    )
+    worker: RunWorker
+    if healing_profile is None:
+        worker = RunWorker(
+            queue=queue,
+            coordinator=remote,
+            recorder=recorder,
+            engine=engines[ROLE_WORKER],
+            principal_id=principal_id,
+            workspace_id=workspace_id,
+        )
+    else:
+        worker = HealingWorker(
+            healing_profile=healing_profile,
+            queue=queue,
+            coordinator=remote,
+            recorder=recorder,
+            engine=engines[ROLE_WORKER],
+            principal_id=principal_id,
+            workspace_id=workspace_id,
+        )
     journal = CommandJournal(
         create_session_factory(engines[ROLE_SUPERVISOR]),
         workspace_id=workspace_id,
@@ -242,6 +274,7 @@ async def submit_case_run(
     idempotency_key: str | None = None,
     policy: str = "default",
     observation_mode: str = "semantic",
+    gate_profile: str = "default",
 ) -> dict:
     from uuid import uuid4
 
@@ -277,6 +310,7 @@ async def submit_case_run(
             provided_capabilities=frozenset(),
             policy=policy,
             observation_mode=Modality(observation_mode),
+            gate_profile=gate_profile,
         )
     )
     async with create_session_factory(engines[ROLE_API])() as session, session.begin():

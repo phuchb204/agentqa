@@ -1,0 +1,90 @@
+schema_version: case/1
+logical_key: taskboard_delete_item_healed
+title: Đăng nhập, tạo việc và xoá việc khi locator đã đổi
+goal: Xoá một việc mới tạo dù nút xoá đổi nhãn so với locator đã lưu
+requirements: [delete_item]
+
+source_defs:
+  create_item:
+    source_content_digest: 1b37b1a900f62fb258ea067be0549ac1521129604f18dc316566c10fefe057d0
+    anchor: {type: section, value: create-item}
+    quote_digest: 99030afd9733cdd28fd467f6139c23619d4846791e829a44bb789867b2ee8aa3
+    provenance: user
+
+postcondition_defs:
+  item_deleted:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: count_equals
+      target:
+        intent: created_item_row
+        role: listitem
+        entity_scope: {field: text, value: {kind: parameter, name: item_name, type: string}}
+      expected: {kind: literal, value: 0}
+
+parameter_defs:
+  item_name: {type: string, required: true}
+
+fixture_refs: [taskboard@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: taskboard.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, locators: [{kind: label, value: Mật khẩu}]}
+    value: {kind: secret, credential_ref: taskboard.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+  - id: item_name
+    kind: action
+    operation: fill
+    target: {intent: new_item, role: textbox, name: Việc mới}
+    value: {kind: parameter, name: item_name, type: string}
+    side_effect: reversible
+  - id: add_item
+    kind: action
+    operation: click
+    target: {intent: create_item, role: button, name: Thêm việc}
+    side_effect: external_write
+  - id: delete_item
+    kind: action
+    operation: click
+    target:
+      intent: delete_item
+      role: button
+      name: Xoá việc
+      entity_scope: {field: text, value: {kind: parameter, name: item_name, type: string}}
+    side_effect: external_write
+    postconditions: [item_deleted]
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: item_absent
+        required: true
+        target:
+          intent: created_item_row
+          role: listitem
+          entity_scope: {field: text, value: {kind: parameter, name: item_name, type: string}}
+        comparator: count_equals
+        expected: {kind: literal, value: 0}
+        source_refs: [create_item]
+
+completion:
+  required_nodes: [delete_item, result]
+  required_assertions: [item_absent]

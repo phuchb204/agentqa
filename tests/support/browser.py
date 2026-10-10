@@ -21,6 +21,7 @@ from agentqa.agent.browser import (
     PlaywrightReadPort,
     SafeEvidenceService,
 )
+from agentqa.agent.browser.journals import DownloadJournal, NetworkJournal
 from agentqa.contracts.actions import ActionCommand, Operation
 from agentqa.contracts.identity import TargetDescriptor
 from agentqa.contracts.values import LiteralValue, SecretValue, SensitiveValue
@@ -72,6 +73,7 @@ def action_command(
     value: LiteralValue | SecretValue | None = None,
     observation_version: int = 1,
     grant_refs: list[str] | None = None,
+    page_key: str = "main",
 ) -> ActionCommand:
     return ActionCommand(
         command_id=uuid4(),
@@ -82,6 +84,7 @@ def action_command(
         operation=operation,
         target=target,
         value=value,
+        page_key=page_key,
         secret_grant_refs=list(grant_refs or []),
     )
 
@@ -244,6 +247,7 @@ async def start_stack(
     endpoints: list[AllowedEndpoint],
     resolver: Resolver = no_dns_resolver,
     secret_broker: Any | None = None,
+    file_resolver: Any | None = None,
 ) -> BrowserStack:
     policy = EgressPolicy(endpoints, resolver=resolver)
     proxy = EgressProxy(policy)
@@ -258,12 +262,16 @@ async def start_stack(
     taint = TaintRegistry()
     sink = RecordingSink()
     evidence = SafeEvidenceService(redactor=RedactionService(taint), sink=sink, taint=taint)
-    read_port = PlaywrightReadPort(session.contexts, evidence)
+    downloads = DownloadJournal()
+    network = NetworkJournal()
+    read_port = PlaywrightReadPort(session.contexts, evidence, network=network, downloads=downloads)
     action_port = PlaywrightActionPort(
         session.contexts,
         evidence,
         secret_resolver=secret_broker,
         navigation_guard=policy,
+        file_resolver=file_resolver,
+        downloads=downloads,
     )
     return BrowserStack(
         policy=policy,

@@ -14,7 +14,10 @@ from agentqa.platform.artifacts.service import ArtifactService
 from agentqa.platform.artifacts.store import FileSystemBlobStore
 from agentqa.platform.authoring.service import AuthoringService
 from agentqa.platform.bundles.service import BundleService
+from agentqa.platform.cache.service import DecisionCacheService
+from agentqa.platform.comparison.service import ComparisonService
 from agentqa.platform.datasets.service import DatasetService
+from agentqa.platform.diagnostics.service import DiagnosticService
 from agentqa.platform.events.service import EventService
 from agentqa.platform.exploration.service import ExplorationPort, ExplorationService
 from agentqa.platform.extraction.service import ExtractionService
@@ -23,6 +26,7 @@ from agentqa.platform.identity.authorization import AuthorizationService
 from agentqa.platform.identity.bootstrap import LocalBootstrapService
 from agentqa.platform.identity.sessions import DEFAULT_SESSION_TTL, SessionService, TokenService
 from agentqa.platform.identity.users import UserService
+from agentqa.platform.reports.service import ReportService
 from agentqa.platform.requirements.impact import RequirementImpactService
 from agentqa.platform.revisions.service import RevisionService
 from agentqa.platform.runs.service import RunService
@@ -91,6 +95,10 @@ class PlatformRuntime:
     bundles: BundleService
     suites: SuiteService
     datasets: DatasetService
+    cache: DecisionCacheService
+    diagnostics: DiagnosticService
+    reports: ReportService
+    comparison: ComparisonService
     browser_frames: BrowserFramePort | None
 
     @classmethod
@@ -126,6 +134,7 @@ class PlatformRuntime:
         extraction = ExtractionService()
         revisions = RevisionService(api_engine)
         usage = UsageLedgerService()
+        artifacts = ArtifactService(api_engine, store, taint=registry)
         return cls(
             profile=profile,
             engines=engines,
@@ -143,7 +152,7 @@ class PlatformRuntime:
             runs=RunService(api_engine, events=events),
             events=events,
             usage=usage,
-            artifacts=ArtifactService(api_engine, store, taint=registry),
+            artifacts=artifacts,
             extraction=extraction,
             sources=SourceService(
                 api_engine,
@@ -158,6 +167,10 @@ class PlatformRuntime:
             bundles=BundleService(api_engine, revisions=revisions),
             suites=SuiteService(api_engine),
             datasets=DatasetService(api_engine),
+            cache=DecisionCacheService(api_engine),
+            diagnostics=DiagnosticService(api_engine, model=generative_model, usage=usage),
+            reports=ReportService(api_engine, artifacts),
+            comparison=ComparisonService(api_engine),
             browser_frames=browser_frames
             if browser_frames is not None
             else (

@@ -15,6 +15,7 @@ from agentqa.agent.policies.values import ValueGenerator, ValueResolver
 from agentqa.agent.replay.runner import ActionOutcomeView, StepRecord
 from agentqa.contracts.canonical import digest_content
 from agentqa.contracts.case import ActionNode, CaseContent, CheckpointNode
+from agentqa.contracts.healing import HealingRecord
 from agentqa.contracts.observation import Actionability, Modality
 from agentqa.contracts.policies import PolicyKind, RunMode, validate_mode_policy_modality
 from agentqa.contracts.ports import DecisionModelPort, GenerativeModelPort
@@ -40,6 +41,9 @@ class RunBundle:
     aborted_reason: str | None = None
     degraded: bool = False
     policy_versions: list[str] = field(default_factory=list)
+    healing_records: list[HealingRecord] = field(default_factory=list)
+    captures: dict[str, object] = field(default_factory=dict)
+    visited_instances: list[str] = field(default_factory=list)
 
 
 class CoordinatorHooksPort(Protocol):
@@ -196,6 +200,9 @@ def bundle_from_replay(replay: Any) -> RunBundle:
         aborted_reason=replay.aborted_reason,
         degraded=False,
         policy_versions=[],
+        healing_records=list(getattr(replay, "healing_records", [])),
+        captures=dict(getattr(replay, "captures", {})),
+        visited_instances=list(getattr(replay, "visited_instances", [])),
     )
 
 

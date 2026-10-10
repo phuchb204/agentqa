@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import time
-from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
-from urllib.parse import urlsplit
 
 from agentqa.contracts.errors import ErrorCode
 from agentqa.contracts.identity import TargetDescriptor
-from agentqa.contracts.values import LiteralValue
+from agentqa.contracts.values import LiteralValue, ValueExpr
 from agentqa.contracts.verification import (
     AssertionResult,
     AssertionSpec,
@@ -17,22 +14,25 @@ from agentqa.contracts.verification import (
     Comparator,
     EvidenceRequirement,
     EvidenceStatus,
+    NetworkFilter,
 )
 
-TARGET_REQUIRED = frozenset(
-    {
-        Comparator.EXISTS,
-        Comparator.UNIQUE,
-        Comparator.VISIBLE,
-        Comparator.COUNT_EQUALS,
-        Comparator.COUNT_GREATER_OR_EQUAL,
-        Comparator.EQUALS,
-        Comparator.NOT_EQUALS,
-        Comparator.CONTAINS,
-        Comparator.TEXT_EQUALS,
-        Comparator.ATTRIBUTE_EQUALS,
-    }
-)
+
+@dataclass(frozen=True)
+class NetworkEntry:
+    method: str
+    url: str
+    status: int
+    body_digest: str | None = None
+    body_excerpt: str | None = None
+
+
+@dataclass(frozen=True)
+class DownloadEntry:
+    filename: str
+    media_type: str | None
+    size_bytes: int | None
+    sha256: str | None
 
 
 class SceneFacts(Protocol):
@@ -46,9 +46,27 @@ class SceneFacts(Protocol):
 
     def visible(self, target: TargetDescriptor) -> bool: ...
 
+    def hidden(self, target: TargetDescriptor) -> bool: ...
+
     def attribute(self, target: TargetDescriptor, name: str) -> str | None: ...
 
+    def checked(self, target: TargetDescriptor) -> bool | None: ...
+
+    def enabled(self, target: TargetDescriptor) -> bool | None: ...
+
     def evidence_status(self, assertion_id: str) -> EvidenceStatus: ...
+
+    def capture(self, name: str) -> object | None: ...
+
+    def parameter(self, name: str) -> object | None: ...
+
+    def network(self, filter: NetworkFilter) -> list[NetworkEntry]: ...
+
+    def downloads(self) -> list[DownloadEntry]: ...
+
+    def baseline(self, ref: str) -> bytes | None: ...
+
+    def screenshot(self) -> bytes | None: ...
 
 
 @dataclass(frozen=True)
@@ -60,76 +78,42 @@ class Outcome:
     evidence_status: EvidenceStatus = EvidenceStatus.PRESENT
 
 
+@dataclass(frozen=True)
+class EvaluatorTable:
+    handlers: dict[Comparator, object] = field(default_factory=dict)
+
+
 def evaluate_assertion(assertion: AssertionSpec, facts: SceneFacts) -> Outcome:
-    target = assertion.target
-    if target is None and assertion.comparator in TARGET_REQUIRED:
-        return _capability()
-    expected = _literal(assertion.expected)
-    if assertion.expected is not None and expected is None:
-        return _capability()
+    from agentqa.verify.evaluators import download as download_module
+    from agentqa.verify.evaluators import elements, entities, network, url, visual
+
     comparator = assertion.comparator
-    if comparator == Comparator.EXISTS:
-        if target is None:
-            return _capability()
-        count = facts.count(target)
-        wanted = bool(expected) if expected is not None else True
-        return _from_bool((count > 0) == wanted, observed=str(count))
-    if comparator == Comparator.UNIQUE:
-        if target is None:
-            return _capability()
-        count = facts.count(target)
-        return _from_bool(count == 1, observed=str(count))
-    if comparator == Comparator.VISIBLE:
-        if target is None:
-            return _capability()
-        visible = facts.visible(target)
-        wanted = bool(expected) if expected is not None else True
-        return _from_bool(visible == wanted, observed=str(visible))
-    if comparator in (Comparator.COUNT_EQUALS, Comparator.COUNT_GREATER_OR_EQUAL):
-        if target is None or not isinstance(expected, int):
-            return _capability()
-        count = facts.count(target)
-        if comparator == Comparator.COUNT_EQUALS:
-            return _from_bool(count == expected, observed=str(count))
-        return _from_bool(count >= expected, observed=str(count))
-    if comparator == Comparator.URL_PATH_EQUALS:
-        if not isinstance(expected, str):
-            return _capability()
-        path = urlsplit(facts.url()).path
-        return _from_bool(path == expected, observed=path)
-    if comparator == Comparator.ATTRIBUTE_EQUALS:
-        if target is None or not target.attributes:
-            return _capability()
-        name = next(iter(target.attributes))
-        actual = facts.attribute(target, name)
-        wanted = expected if expected is not None else target.attributes[name]
-        return _from_bool(actual == wanted, observed=actual or "")
-    if comparator in (Comparator.EQUALS, Comparator.TEXT_EQUALS, Comparator.CONTAINS, Comparator.NOT_EQUALS):
-        if target is None:
-            return _capability()
-        text = facts.text(target)
-        if comparator == Comparator.NOT_EQUALS:
-            if text is None:
-                return Outcome(status=AssertionStatus.PASSED, observed="absent")
-            return _from_bool(text.strip() != (expected or ""), observed=text)
-        if text is None:
-            return _from_bool(False, observed="absent")
-        if not isinstance(expected, str):
-            return _capability()
-        normalized = text.strip()
-        if comparator == Comparator.CONTAINS:
-            return _from_bool(expected in normalized, observed=normalized)
-        return _from_bool(normalized == expected, observed=normalized)
-    return _capability()
+    if comparator in entities.HANDLED and assertion.target is not None and assertion.target.entity_scope is not None:
+        return entities.evaluate(assertion, facts)
+    if comparator in elements.HANDLED:
+        return elements.evaluate(assertion, facts)
+    if comparator in url.HANDLED:
+        return url.evaluate(assertion, facts)
+    if comparator in network.HANDLED:
+        return network.evaluate(assertion, facts)
+    if comparator in download_module.HANDLED:
+        return download_module.evaluate(assertion, facts)
+    if comparator in visual.HANDLED:
+        return visual.evaluate(assertion, facts)
+    return capability()
 
 
 def evaluate_checkpoint(
     request: CheckpointEvaluationRequest,
     facts: SceneFacts,
     *,
-    clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    clock=None,
+    sleep=None,
 ) -> list[AssertionResult]:
+    import time
+
+    clock = clock or time.monotonic
+    sleep = sleep or time.sleep
     waiting = [assertion for assertion in request.assertions if assertion.wait is not None]
     outcomes = {assertion.id: _guarded_outcome(assertion, facts) for assertion in request.assertions}
     if waiting:
@@ -142,6 +126,42 @@ def evaluate_checkpoint(
             sleep(poll)
             outcomes = {assertion.id: _guarded_outcome(assertion, facts) for assertion in request.assertions}
     return [_to_result(request, assertion, outcomes[assertion.id]) for assertion in request.assertions]
+
+
+def literal_value(expected: ValueExpr | None) -> object | None:
+    return expected.value if isinstance(expected, LiteralValue) else None
+
+
+def dynamic_value(expected: ValueExpr | None, facts: SceneFacts) -> tuple[object | None, str | None]:
+    if expected is None:
+        return None, None
+    if isinstance(expected, LiteralValue):
+        return expected.value, None
+    kind = expected.kind
+    if kind == "capture":
+        value = facts.capture(expected.name)
+        if value is None:
+            return None, ErrorCode.INVALID_CAPTURE.value
+        return value, None
+    if kind == "parameter":
+        value = facts.parameter(expected.name)
+        if value is None:
+            return None, ErrorCode.INPUT_INVALID.value
+        return value, None
+    return None, ErrorCode.CAPABILITY_UNAVAILABLE.value
+
+
+def from_bool(satisfied: bool, *, observed: str | None = None) -> Outcome:
+    status = AssertionStatus.PASSED if satisfied else AssertionStatus.FAILED
+    return Outcome(status=status, observed=observed)
+
+
+def capability(reason: str | None = None) -> Outcome:
+    return Outcome(
+        status=AssertionStatus.ERROR,
+        reason=reason or ErrorCode.CAPABILITY_UNAVAILABLE.value,
+        error_code=ErrorCode.CAPABILITY_UNAVAILABLE,
+    )
 
 
 def _guarded_outcome(assertion: AssertionSpec, facts: SceneFacts) -> Outcome:
@@ -190,22 +210,3 @@ def _to_result(request: CheckpointEvaluationRequest, assertion: AssertionSpec, o
         applicable=True,
         reason=outcome.reason,
     )
-
-
-def _from_bool(satisfied: bool, *, observed: str | None = None) -> Outcome:
-    status = AssertionStatus.PASSED if satisfied else AssertionStatus.FAILED
-    return Outcome(status=status, observed=observed)
-
-
-def _capability() -> Outcome:
-    return Outcome(
-        status=AssertionStatus.ERROR,
-        reason=ErrorCode.CAPABILITY_UNAVAILABLE.value,
-        error_code=ErrorCode.CAPABILITY_UNAVAILABLE,
-    )
-
-
-def _literal(value: object) -> object | None:
-    if isinstance(value, LiteralValue):
-        return value.value
-    return None

@@ -348,6 +348,70 @@ export interface RunEventView {
   type: string;
 }
 
+export interface ReportSummary {
+  report_id: string;
+  run_id: string;
+  format: string;
+  artifact_id: string;
+  digest: string | null;
+  media_type: string;
+  created_at: string;
+}
+
+export interface DiagnosticSummary {
+  diagnostic_id: string;
+  run_id: string;
+  state: string;
+  label: string;
+  explanation: string | null;
+  confidence: string | null;
+  evidence_refs: string[];
+  model_call_id: string | null;
+  created_at: string;
+}
+
+export interface IssuePackageSummary {
+  package_id: string;
+  run_id: string;
+  artifact_id: string;
+  digest: string | null;
+  preview: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface HealingRecord {
+  record_id: string;
+  run_id: string;
+  execution_id: string | null;
+  attempt_id: string | null;
+  actor: "action" | "evidence";
+  node_id: string;
+  opportunity_id: string;
+  attempt_ref: string;
+  decision: "recovered" | "refused";
+  ranking: Record<string, unknown> | null;
+  expected_signature: string | null;
+  actual_signature: string | null;
+  original_target: Record<string, unknown> | null;
+  actual_target: Record<string, unknown> | null;
+  dispatch_outcome: string | null;
+  guard_checks: string[];
+  postconditions_ok: boolean | null;
+  refusal_reason: string | null;
+  error: string | null;
+  proposal: {
+    node_id: string;
+    intent: string;
+    proposed: Record<string, unknown>;
+    locator: { kind: string; value: string } | null;
+    source_run_id: string | null;
+  } | null;
+  source_run_id: string | null;
+  case_id: string | null;
+  case_revision_id: string | null;
+  recorded_at: string;
+}
+
 export interface ErrorShape {
   code: string;
   message: string;

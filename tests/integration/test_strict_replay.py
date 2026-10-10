@@ -142,7 +142,7 @@ async def test_missing_required_assertion_is_inconclusive_but_action_ran(
     assert probe_from_events(events)["label_counts"][ITEM_NAME] == 1
 
 
-async def test_capability_validator_rejects_unsupported_node_without_actions(
+async def test_capability_validator_rejects_unbounded_loop_without_actions(
     replay_workspace: ReplayWorkspace, harness_engines
 ) -> None:
     workspace = replay_workspace
@@ -150,23 +150,20 @@ async def test_capability_validator_rejects_unsupported_node_without_actions(
     case = CaseContent.model_validate(
         {
             "schema_version": "case/1",
-            "logical_key": "unsupported_capture",
+            "logical_key": "unsupported_loop",
             "title": "Unsupported",
             "goal": "Gate capability",
             "requirements": ["r1"],
             "nodes": [
                 {
-                    "id": "capture-flag",
-                    "kind": "capture",
-                    "probe": {
-                        "kind": "comparison",
-                        "comparator": "exists",
-                        "target": {"intent": "flag"},
-                    },
-                    "output": {"name": "flag", "type": "boolean"},
+                    "id": "loop-forever",
+                    "kind": "loop",
+                    "condition": {"kind": "capture", "name": "flag"},
+                    "max_iterations": 0,
+                    "body": [],
                 }
             ],
-            "completion": {"required_nodes": ["capture-flag"], "required_assertions": []},
+            "completion": {"required_nodes": ["loop-forever"], "required_assertions": []},
         }
     )
     ids = await submit_case_run(

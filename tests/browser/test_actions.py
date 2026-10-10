@@ -119,18 +119,27 @@ def test_navigate_fill_click_wait_and_probe_flow(
     run_async(scenario())
 
 
-def test_unsupported_operation_is_rejected_not_noop(taskboard_server: TaskboardServer, tmp_path: Path) -> None:
+def test_operation_registry_is_complete_and_rejects_unbuildable_command(
+    taskboard_server: TaskboardServer, tmp_path: Path
+) -> None:
     run_id = uuid4()
 
     async def scenario() -> None:
         stack = await start_stack(temp_root=tmp_path, endpoints=[taskboard_endpoint(taskboard_server)])
         try:
             await stack.session.contexts.open(str(run_id))
-            assert stack.action_port.capability(Operation.UPLOAD).implemented is False
-            assert Operation.UPLOAD not in stack.action_port.supported_operations
-            receipt = await stack.action_port.dispatch(command(run_id, Operation.UPLOAD, target=by_text("Không dùng")))
+            assert stack.action_port.capability(Operation.UPLOAD).implemented is True
+            assert set(stack.action_port.supported_operations) == set(Operation)
+            receipt = await stack.action_port.dispatch(
+                command(
+                    run_id,
+                    Operation.UPLOAD,
+                    target=by_text("Không dùng"),
+                    value=LiteralValue(kind="literal", value="anh.png"),
+                )
+            )
             assert receipt.outcome == ActionOutcome.REJECTED
-            assert receipt.evidence_refs == ["capability_unavailable"]
+            assert receipt.evidence_refs == ["locator_missing"]
         finally:
             await stack.aclose()
 

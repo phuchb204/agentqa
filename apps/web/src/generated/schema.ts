@@ -431,6 +431,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/issue-packages/{package_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["download_issue_package_api_v1_workspaces__workspace_id__issue_packages__package_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -489,6 +505,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["apply_proposal_api_v1_workspaces__workspace_id__proposals__proposal_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/reports/{report_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["download_report_api_v1_workspaces__workspace_id__reports__report_id__content_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -623,6 +655,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_diagnostics_api_v1_workspaces__workspace_id__runs__run_id__diagnostics_get"];
+        put?: never;
+        post: operations["create_diagnostic_api_v1_workspaces__workspace_id__runs__run_id__diagnostics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/runs/{run_id}/events": {
         parameters: {
             query?: never;
@@ -649,6 +697,54 @@ export interface paths {
         get: operations["stream_events_api_v1_workspaces__workspace_id__runs__run_id__events_stream_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/healing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_run_healing_api_v1_workspaces__workspace_id__runs__run_id__healing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/issue-packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_issue_package_api_v1_workspaces__workspace_id__runs__run_id__issue_packages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_reports_api_v1_workspaces__workspace_id__runs__run_id__reports_get"];
+        put?: never;
+        post: operations["create_report_api_v1_workspaces__workspace_id__runs__run_id__reports_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -924,9 +1020,15 @@ export interface components {
         ComparisonResponse: {
             alignment: components["schemas"]["AlignmentResponse"][];
             config_diff: components["schemas"]["ConfigDiffResponse"][];
+            denominators?: {
+                [key: string]: unknown;
+            } | null;
             metrics: {
                 [key: string]: components["schemas"]["ComparisonMetricResponse"];
             };
+            provenance?: {
+                [key: string]: unknown;
+            } | null;
             run_a: string;
             run_b: string;
         };
@@ -979,6 +1081,20 @@ export interface components {
         };
         CsrfResponse: {
             csrf_token: string;
+        };
+        DiagnosticListResponse: {
+            items: components["schemas"]["DiagnosticResponse"][];
+        };
+        DiagnosticResponse: {
+            confidence?: string | null;
+            created_at: string;
+            diagnostic_id: string;
+            evidence_refs: string[];
+            explanation?: string | null;
+            label: string;
+            model_call_id?: string | null;
+            run_id: string;
+            state: string;
         };
         DraftPatchRequest: {
             content: {
@@ -1083,6 +1199,43 @@ export interface components {
         HTTPValidationError: {
             detail?: components["schemas"]["ValidationError"][];
         };
+        HealingListResponse: {
+            items: components["schemas"]["HealingRecordResponse"][];
+        };
+        HealingRecordResponse: {
+            actor: string;
+            actual_signature?: string | null;
+            actual_target?: {
+                [key: string]: unknown;
+            } | null;
+            attempt_id?: string | null;
+            attempt_ref: string;
+            case_id?: string | null;
+            case_revision_id?: string | null;
+            decision: string;
+            dispatch_outcome?: string | null;
+            error?: string | null;
+            execution_id?: string | null;
+            expected_signature?: string | null;
+            guard_checks: string[];
+            node_id: string;
+            opportunity_id: string;
+            original_target?: {
+                [key: string]: unknown;
+            } | null;
+            postconditions_ok?: boolean | null;
+            proposal?: {
+                [key: string]: unknown;
+            } | null;
+            ranking?: {
+                [key: string]: unknown;
+            } | null;
+            record_id: string;
+            recorded_at: string;
+            refusal_reason?: string | null;
+            run_id: string;
+            source_run_id?: string | null;
+        };
         HealthResponse: {
             schema_versions: {
                 [key: string]: string;
@@ -1113,6 +1266,16 @@ export interface components {
         };
         ImportResponse: {
             imported: components["schemas"]["PromotionSummary"][];
+        };
+        IssuePackageResponse: {
+            artifact_id: string;
+            created_at: string;
+            digest?: string | null;
+            package_id: string;
+            preview: {
+                [key: string]: unknown;
+            };
+            run_id: string;
         };
         JobResponse: {
             created_at: string;
@@ -1188,6 +1351,21 @@ export interface components {
             requirement_keys: string[];
             status: string;
             title: string;
+        };
+        ReportCreateRequest: {
+            format: string;
+        };
+        ReportListResponse: {
+            items: components["schemas"]["ReportResponse"][];
+        };
+        ReportResponse: {
+            artifact_id: string;
+            created_at: string;
+            digest?: string | null;
+            format: string;
+            media_type: string;
+            report_id: string;
+            run_id: string;
         };
         RevisionResponse: {
             archived_at?: string | null;
@@ -2375,6 +2553,36 @@ export interface operations {
             };
         };
     };
+    download_issue_package_api_v1_workspaces__workspace_id__issue_packages__package_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_job_api_v1_workspaces__workspace_id__jobs__job_id__get: {
         parameters: {
             query?: never;
@@ -2551,6 +2759,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplyProposalResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_report_api_v1_workspaces__workspace_id__reports__report_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             422: {
@@ -2886,6 +3124,66 @@ export interface operations {
             };
         };
     };
+    list_diagnostics_api_v1_workspaces__workspace_id__runs__run_id__diagnostics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticListResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_diagnostic_api_v1_workspaces__workspace_id__runs__run_id__diagnostics_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_events_api_v1_workspaces__workspace_id__runs__run_id__events_get: {
         parameters: {
             query?: {
@@ -2941,6 +3239,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_run_healing_api_v1_workspaces__workspace_id__runs__run_id__healing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealingListResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_issue_package_api_v1_workspaces__workspace_id__runs__run_id__issue_packages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuePackageResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_api_v1_workspaces__workspace_id__runs__run_id__reports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportListResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_report_api_v1_workspaces__workspace_id__runs__run_id__reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportCreateRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportResponse"];
                 };
             };
             422: {

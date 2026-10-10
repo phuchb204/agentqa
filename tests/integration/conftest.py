@@ -105,3 +105,22 @@ async def storage_fault_workspace(
     )
     yield ReplayWorkspace(user_id=user_id, workspace_id=workspace_id, harness=harness)
     harness.aclose()
+
+
+@pytest_asyncio.fixture
+async def healing_workspace(
+    harness_engines, test_db, taskboard_server: TaskboardServer
+) -> AsyncIterator[ReplayWorkspace]:
+    from tests.support.healing import synthetic_profile
+
+    user_id, workspace_id = await seed_replay_workspace(harness_engines)
+    harness = build_replay_harness(
+        engines=harness_engines,
+        test_db=test_db,
+        principal_id=user_id,
+        workspace_id=workspace_id,
+        taskboard_server=taskboard_server,
+        healing_profile=synthetic_profile(),
+    )
+    yield ReplayWorkspace(user_id=user_id, workspace_id=workspace_id, harness=harness)
+    harness.aclose()

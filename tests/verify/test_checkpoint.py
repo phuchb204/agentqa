@@ -158,7 +158,7 @@ def test_wait_policy_timeout_reports_failed_with_last_observation() -> None:
     assert results[0].observed_redacted == "0"
 
 
-def test_unsupported_expected_expression_is_capability_error_not_pass() -> None:
+def test_unresolved_expected_expression_is_error_not_pass() -> None:
     facts = FakeFacts(counts={"rows": 1})
     results = evaluate_checkpoint(
         checkpoint_request(
@@ -174,7 +174,7 @@ def test_unsupported_expected_expression_is_capability_error_not_pass() -> None:
         facts,
     )
     assert results[0].status == AssertionStatus.ERROR
-    assert results[0].reason == ErrorCode.CAPABILITY_UNAVAILABLE.value
+    assert results[0].reason == ErrorCode.INPUT_INVALID.value
 
 
 def test_missing_required_evidence_is_error_not_business_failure() -> None:

@@ -129,6 +129,13 @@ class SafeEvidenceService:
         self.assert_sink_clean(masked)
         return self._sink.put(label, masked, "image/png")
 
+    def emit_file(self, label: str, payload: bytes, media_type: str) -> str:
+        self.assert_sink_clean(payload)
+        return self._sink.put(label, payload, media_type)
+
+    def sanitize_text(self, text: str) -> str:
+        return self._redactor.redact_text(text)
+
     def record_action(self, entry: Mapping[str, Any]) -> dict[str, Any]:
         recorded = self._redactor.redact_structure(dict(entry))
         if self._taint is not None:

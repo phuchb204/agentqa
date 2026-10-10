@@ -90,6 +90,8 @@ class ActionCommand(StrictModel):
     operation: Operation
     target: TargetDescriptor | None = None
     value: ValueExpr | None = None
+    page_key: str = "main"
+    frame_key: str | None = None
     secret_grant_refs: list[str] = []
     postcondition_refs: list[str] = []
 

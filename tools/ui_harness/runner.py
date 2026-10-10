@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import json
 import os
 import secrets
@@ -109,9 +110,16 @@ def _run_db(coro: Any) -> Any:
 
 
 class HarnessWorker(RunWorker):
+    def __init__(self, *, healing_profile=None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._healing_profile = healing_profile
+
     async def _load(self, execution_id: UUID) -> ExecutionSpec:
         await self._ensure_attempt(execution_id)
-        return await super()._load(execution_id)
+        spec = await super()._load(execution_id)
+        if self._healing_profile is None:
+            return spec
+        return dataclasses.replace(spec, healing_profile=self._healing_profile)
 
     async def _ensure_attempt(self, execution_id: UUID) -> None:
         async with self._factory() as session, session.begin():
@@ -145,28 +153,33 @@ class RemoteCoordinator:
 
         client = self._supervisor.client()
         try:
-            response = client.request(
-                {
-                    "op": "run_execution",
-                    "workspace_id": str(spec.workspace_id),
-                    "principal_id": str(spec.principal_id),
-                    "run_id": str(spec.run_id),
-                    "execution_id": str(spec.execution_id),
-                    "attempt_id": str(spec.attempt_id),
-                    "logical_key": spec.logical_key,
-                    "case": spec.case.model_dump(mode="json"),
-                    "target_base_url": spec.target_base_url,
-                    "fixture_ref": spec.fixture_ref,
-                    "namespace": spec.namespace,
-                    "parameters": spec.parameters,
-                    "gate_profile": spec.gate_profile,
-                    "fence_epoch": spec.fence_epoch,
-                    "policy": spec.policy,
-                    "observation_mode": spec.observation_mode,
-                    "snapshot_digest": spec.snapshot_digest,
-                    "provisional": spec.provisional,
-                }
-            )
+            payload: dict[str, Any] = {
+                "op": "run_execution",
+                "workspace_id": str(spec.workspace_id),
+                "principal_id": str(spec.principal_id),
+                "run_id": str(spec.run_id),
+                "execution_id": str(spec.execution_id),
+                "attempt_id": str(spec.attempt_id),
+                "logical_key": spec.logical_key,
+                "case": spec.case.model_dump(mode="json"),
+                "target_base_url": spec.target_base_url,
+                "fixture_ref": spec.fixture_ref,
+                "namespace": spec.namespace,
+                "parameters": spec.parameters,
+                "gate_profile": spec.gate_profile,
+                "fence_epoch": spec.fence_epoch,
+                "policy": spec.policy,
+                "observation_mode": spec.observation_mode,
+                "snapshot_digest": spec.snapshot_digest,
+                "provisional": spec.provisional,
+            }
+            if spec.healing_profile is not None:
+                payload["healing_profile"] = spec.healing_profile.model_dump(mode="json")
+            if spec.case_id is not None:
+                payload["case_id"] = str(spec.case_id)
+            if spec.case_revision_id is not None:
+                payload["case_revision_id"] = str(spec.case_revision_id)
+            response = client.request(payload)
         finally:
             client.close_socket()
         if response.get("ok") is not True:
@@ -194,10 +207,11 @@ class SeedResult:
 
 class UiHarness:
     def __init__(self, *, scenario: str = "authoring", build_web: bool = True) -> None:
-        if scenario not in ("authoring", "live"):
+        if scenario not in ("authoring", "live", "healing", "reporting"):
             raise HarnessError(f"scenario không hỗ trợ: {scenario}")
         self.scenario = scenario
         self.build_web = build_web
+        self.healing_profile = None
         self.db_name = f"agentqa_ui_{secrets.token_hex(4)}"
         self.workspace_root = REPO_ROOT / "artifacts" / "ui-e2e" / self.db_name
         self.workspace_root.mkdir(parents=True, exist_ok=True)
@@ -466,6 +480,10 @@ class UiHarness:
         document = authored_taskboard_case(payload)
         document["logical_key"] = logical_key
         document["requirements"] = ["create_item"]
+        return self.seed_case_document(logical_key=logical_key, document=document)
+
+    def seed_case_document(self, *, logical_key: str, document: dict) -> UUID:
+        assert self.seed is not None
 
         async def promote() -> UUID:
             runtime = PlatformRuntime.build(
@@ -496,6 +514,29 @@ class UiHarness:
 
         return _run_db(promote())
 
+    def case_draft_version(self, case_id: UUID) -> int | None:
+        assert self.seed is not None
+
+        async def query() -> int | None:
+            engine = create_async_engine(self.dsn_by_role[ROLE_API])
+            try:
+                factory = create_session_factory(engine)
+                async with factory() as session, session.begin():
+                    await set_scope(session, principal_id=self.seed.user_id, workspace_id=self.seed.workspace_id)
+                    row = (
+                        await session.execute(
+                            sa.select(tables.case_drafts.c.edit_version).where(
+                                tables.case_drafts.c.workspace_id == self.seed.workspace_id,
+                                tables.case_drafts.c.case_id == case_id,
+                            )
+                        )
+                    ).one_or_none()
+                    return row.edit_version if row is not None else None
+            finally:
+                await engine.dispose()
+
+        return _run_db(query())
+
     async def _worker_loop(self) -> None:
         assert self.seed is not None
         assert self.supervisor is not None
@@ -510,6 +551,7 @@ class UiHarness:
             coordinator = RemoteCoordinator(self.supervisor)
             recorder = RunEventRecorder(engine)
             worker = HarnessWorker(
+                healing_profile=self.healing_profile,
                 queue=queue,
                 coordinator=coordinator,
                 recorder=recorder,
@@ -674,7 +716,7 @@ class UiHarness:
 
         return _run_db(query())
 
-    def run_replay(self, case_revision_id: UUID) -> UUID:
+    def run_replay(self, case_revision_id: UUID, *, policy: str = "default", gate_profile: str = "strict") -> UUID:
         assert self.seed is not None
 
         async def submit() -> UUID:
@@ -690,6 +732,8 @@ class UiHarness:
                         case_revision_ids=(case_revision_id,),
                         environment_revision_id=self.seed.environment_revision_id,
                         provided_capabilities=frozenset(),
+                        policy=policy,
+                        gate_profile=gate_profile,
                     )
                 )
                 return outcome.run_id
@@ -786,6 +830,10 @@ def run_scenario(*, scenario: str = "authoring", build_web: bool = True) -> Harn
     harness = UiHarness(scenario=scenario, build_web=build_web)
     report = HarnessReport(ok=False)
     os.environ["AGENTQA_LLM_API_KEY"] = CANARY_KEY
+    if scenario in ("healing", "reporting"):
+        from tests.support.healing import synthetic_profile
+
+        harness.healing_profile = synthetic_profile()
     try:
         harness.start()
         report.workspace_id = str(harness.seed.workspace_id) if harness.seed else ""
@@ -794,6 +842,18 @@ def run_scenario(*, scenario: str = "authoring", build_web: bool = True) -> Harn
                 from tools.ui_harness.scenario_authoring import drive_authoring_flow
 
                 checks, draft_run, replay_run = _run_async(drive_authoring_flow(harness))
+            elif scenario == "healing":
+                from tools.ui_harness.scenario_healing import drive_healing_flow
+
+                checks, _runs = _run_async(drive_healing_flow(harness))
+                draft_run = {}
+                replay_run = None
+            elif scenario == "reporting":
+                from tools.ui_harness.scenario_reporting import drive_reporting_flow
+
+                checks, _runs = _run_async(drive_reporting_flow(harness))
+                draft_run = {}
+                replay_run = None
             else:
                 from tools.ui_harness.scenario_live import drive_live_flow
 

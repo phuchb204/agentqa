@@ -21,6 +21,14 @@ REVISION_TABLES = (
 APPEND_ONLY_TABLES = ("run_events", "run_snapshots", "command_receipts", "source_segments", *REVISION_TABLES)
 SOURCE_TABLES = ("sources", "source_revisions", "source_segments", "extraction_jobs", "case_source_links")
 AUTHORING_TABLES = ("authoring_jobs", "authoring_proposals", "exploration_results")
+HEALING_TABLES = ("healing_records",)
+P22_TABLES = (
+    "decision_cache_entries",
+    "decision_cache_receipts",
+    "diagnostics",
+    "reports",
+    "issue_packages",
+)
 BROWSER_COMMAND_TABLES = ("browser_sessions", "action_commands", "command_receipts")
 PARTITIONED_PAYLOAD_TABLES = ("run_event_payloads", "model_call_payloads")
 PARTITION_START = "2026-01-01"
@@ -765,6 +773,43 @@ assertion_results = sa.Table(
     ),
 )
 
+healing_records = sa.Table(
+    "healing_records",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("run_id", sa.Uuid, nullable=False),
+    sa.Column("execution_id", sa.Uuid),
+    sa.Column("attempt_id", sa.Uuid),
+    sa.Column("actor", sa.Text, nullable=False),
+    sa.Column("node_id", sa.Text, nullable=False),
+    sa.Column("opportunity_id", sa.Text, nullable=False),
+    sa.Column("attempt_ref", sa.Text, nullable=False),
+    sa.Column("decision", sa.Text, nullable=False),
+    sa.Column("ranking", postgresql.JSONB),
+    sa.Column("expected_signature", sa.Text),
+    sa.Column("actual_signature", sa.Text),
+    sa.Column("original_target", postgresql.JSONB),
+    sa.Column("actual_target", postgresql.JSONB),
+    sa.Column("dispatch_outcome", sa.Text),
+    sa.Column("guard_checks", postgresql.JSONB),
+    sa.Column("postconditions_ok", sa.Boolean),
+    sa.Column("refusal_reason", sa.Text),
+    sa.Column("error", sa.Text),
+    sa.Column("proposal", postgresql.JSONB),
+    sa.Column("source_run_id", sa.Uuid),
+    sa.Column("case_id", sa.Uuid),
+    sa.Column("case_revision_id", sa.Uuid),
+    sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
+    _created_col(),
+    _ws_id_unique("healing_records"),
+    sa.CheckConstraint("actor IN ('action', 'evidence')", name="ck_healing_records_actor"),
+    sa.CheckConstraint("decision IN ('recovered', 'refused')", name="ck_healing_records_decision"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], name="fk_healing_records_run"
+    ),
+)
+
 model_calls = sa.Table(
     "model_calls",
     metadata,
@@ -983,6 +1028,93 @@ audit_events = sa.Table(
     _created_col(),
 )
 
+decision_cache_entries = sa.Table(
+    "decision_cache_entries",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("key_digest", sa.Text, nullable=False),
+    sa.Column("purpose", sa.Text, nullable=False),
+    sa.Column("route", sa.Text, nullable=False),
+    sa.Column("requested_model", sa.Text, nullable=False),
+    sa.Column("resolved_model", sa.Text),
+    sa.Column("prompt_digest", sa.Text, nullable=False),
+    sa.Column("question_digest", sa.Text, nullable=False),
+    sa.Column("input_digest", sa.Text, nullable=False),
+    sa.Column("profile_version", sa.Text, nullable=False),
+    sa.Column("settings_digest", sa.Text, nullable=False),
+    sa.Column("payload", postgresql.JSONB, nullable=False),
+    _created_col(),
+    _ws_id_unique("decision_cache_entries"),
+    sa.UniqueConstraint("workspace_id", "key_digest", name="uq_decision_cache_entries_key"),
+)
+
+decision_cache_receipts = sa.Table(
+    "decision_cache_receipts",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("key_digest", sa.Text, nullable=False),
+    sa.Column("state", sa.Text, nullable=False),
+    sa.Column("purpose", sa.Text, nullable=False),
+    sa.Column("route", sa.Text, nullable=False),
+    sa.Column("run_id", sa.Uuid),
+    sa.Column("reason", sa.Text),
+    _created_col(),
+    _ws_id_unique("decision_cache_receipts"),
+    sa.CheckConstraint("state IN ('hit', 'miss', 'bypass')", name="ck_decision_cache_receipts_state"),
+)
+
+diagnostics = sa.Table(
+    "diagnostics",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("run_id", sa.Uuid, nullable=False),
+    sa.Column("state", sa.Text, nullable=False, server_default=sa.text("'completed'")),
+    sa.Column("label", sa.Text, nullable=False, server_default=sa.text("'Đề xuất phân tích'")),
+    sa.Column("explanation", sa.Text),
+    sa.Column("confidence", sa.Numeric(6, 4)),
+    sa.Column("evidence_refs", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("model_call_id", sa.Uuid),
+    sa.Column("created_by", sa.Text, nullable=False),
+    _created_col(),
+    _ws_id_unique("diagnostics"),
+    sa.CheckConstraint("state IN ('completed', 'failed')", name="ck_diagnostics_state"),
+    sa.ForeignKeyConstraint(["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], name="fk_diagnostics_run"),
+)
+
+reports = sa.Table(
+    "reports",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("run_id", sa.Uuid, nullable=False),
+    sa.Column("format", sa.Text, nullable=False),
+    sa.Column("artifact_id", sa.Uuid, nullable=False),
+    sa.Column("digest", sa.Text),
+    sa.Column("media_type", sa.Text, nullable=False),
+    sa.Column("created_by", sa.Text, nullable=False),
+    _created_col(),
+    _ws_id_unique("reports"),
+    sa.CheckConstraint("format IN ('json', 'html', 'csv', 'jsonl', 'junit')", name="ck_reports_format"),
+    sa.ForeignKeyConstraint(["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], name="fk_reports_run"),
+)
+
+issue_packages = sa.Table(
+    "issue_packages",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("run_id", sa.Uuid, nullable=False),
+    sa.Column("artifact_id", sa.Uuid, nullable=False),
+    sa.Column("digest", sa.Text),
+    sa.Column("created_by", sa.Text, nullable=False),
+    _created_col(),
+    _ws_id_unique("issue_packages"),
+    sa.ForeignKeyConstraint(["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], name="fk_issue_packages_run"),
+)
+
 WORKSPACE_SCOPED_TABLES: tuple[str, ...] = tuple(
     table.name for table in metadata.sorted_tables if "workspace_id" in table.c and table.name != "run_event_payloads"
 )
@@ -998,7 +1130,7 @@ SUPERVISOR_READ_TABLES = (
     "run_controls",
     *BROWSER_COMMAND_TABLES,
 )
-EVALUATOR_READ_TABLES = ("runs", "executions", "run_events", "assertion_results", "artifacts")
+EVALUATOR_READ_TABLES = ("runs", "executions", "run_events", "assertion_results", "healing_records", "artifacts")
 
 API_INSERT_TABLES = (
     "users",
@@ -1046,6 +1178,11 @@ API_INSERT_TABLES = (
     "credential_nonce_registry",
     "credential_grants",
     "audit_events",
+    "decision_cache_entries",
+    "decision_cache_receipts",
+    "diagnostics",
+    "reports",
+    "issue_packages",
 )
 API_UPDATE_TABLES = (
     "users",
@@ -1086,6 +1223,9 @@ WORKER_INSERT_TABLES = (
     "run_events",
     "run_event_payloads",
     "assertion_results",
+    "healing_records",
+    "decision_cache_entries",
+    "decision_cache_receipts",
     "model_calls",
     "model_call_payloads",
     "price_snapshots",
@@ -1107,7 +1247,13 @@ WORKER_UPDATE_TABLES = (
     "outbox_deliveries",
     "resource_slots",
 )
-SUPERVISOR_INSERT_TABLES = ("run_events", "run_controls", *BROWSER_COMMAND_TABLES)
+SUPERVISOR_INSERT_TABLES = (
+    "run_events",
+    "run_controls",
+    "decision_cache_entries",
+    "decision_cache_receipts",
+    *BROWSER_COMMAND_TABLES,
+)
 SUPERVISOR_UPDATE_TABLES = ("action_commands", "browser_sessions", "run_controls", "runs", "executions")
 EVALUATOR_INSERT_TABLES: tuple[str, ...] = ()
 EVALUATOR_UPDATE_TABLES: tuple[str, ...] = ()
@@ -1331,6 +1477,24 @@ def ensure_sources_schema(connection: sa.Connection) -> None:
 
 def ensure_authoring_schema(connection: sa.Connection) -> None:
     for table_name in AUTHORING_TABLES:
+        metadata.tables[table_name].create(connection, checkfirst=True)
+    _create_functions(connection)
+    _create_triggers(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_healing_schema(connection: sa.Connection) -> None:
+    for table_name in HEALING_TABLES:
+        metadata.tables[table_name].create(connection, checkfirst=True)
+    _create_functions(connection)
+    _create_triggers(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_p22_schema(connection: sa.Connection) -> None:
+    for table_name in P22_TABLES:
         metadata.tables[table_name].create(connection, checkfirst=True)
     _create_functions(connection)
     _create_triggers(connection)

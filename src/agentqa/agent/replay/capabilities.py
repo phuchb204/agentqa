@@ -3,16 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from agentqa.contracts.actions import Operation
-from agentqa.contracts.case import ActionNode, CaseContent, CaseNode, CheckpointNode
-
-SUPPORTED_OPERATIONS = frozenset(
-    {
-        Operation.NAVIGATE,
-        Operation.CLICK,
-        Operation.FILL,
-        Operation.WAIT,
-    }
+from agentqa.contracts.case import (
+    ActionNode,
+    BranchNode,
+    CaptureNode,
+    CaseContent,
+    CaseNode,
+    CheckpointNode,
+    LoopNode,
 )
+
+SUPPORTED_OPERATIONS = frozenset(Operation)
 
 
 def supported_operations() -> tuple[str, ...]:
@@ -39,8 +40,7 @@ def validate_case(case: CaseContent) -> CapabilityReport:
     unsupported_nodes: list[str] = []
     unsupported_operations: list[str] = []
     reasons: list[str] = []
-    for node in case.nodes:
-        _validate_node(node, unsupported_nodes, unsupported_operations, reasons)
+    _validate_nodes(case.nodes, unsupported_nodes, unsupported_operations, reasons)
     return CapabilityReport(
         supported=not unsupported_nodes and not unsupported_operations,
         unsupported_nodes=tuple(unsupported_nodes),
@@ -49,18 +49,28 @@ def validate_case(case: CaseContent) -> CapabilityReport:
     )
 
 
-def _validate_node(
-    node: CaseNode,
+def _validate_nodes(
+    nodes: list[CaseNode],
     unsupported_nodes: list[str],
     unsupported_operations: list[str],
     reasons: list[str],
 ) -> None:
-    if isinstance(node, ActionNode):
-        if node.operation not in SUPPORTED_OPERATIONS:
-            unsupported_operations.append(node.operation.value)
-            reasons.append(f"operation_not_supported:{node.operation.value}")
-        return
-    if isinstance(node, CheckpointNode):
-        return
-    unsupported_nodes.append(node.id)
-    reasons.append(f"node_kind_not_supported:{node.kind}")
+    for node in nodes:
+        if isinstance(node, ActionNode):
+            if node.operation not in SUPPORTED_OPERATIONS:
+                unsupported_operations.append(node.operation.value)
+                reasons.append(f"operation_not_supported:{node.operation.value}")
+        elif isinstance(node, (CheckpointNode, CaptureNode)):
+            continue
+        elif isinstance(node, BranchNode):
+            _validate_nodes(node.then_nodes, unsupported_nodes, unsupported_operations, reasons)
+            _validate_nodes(node.else_nodes, unsupported_nodes, unsupported_operations, reasons)
+        elif isinstance(node, LoopNode):
+            if node.max_iterations < 1:
+                unsupported_nodes.append(node.id)
+                reasons.append(f"loop_unbounded:{node.id}")
+                continue
+            _validate_nodes(node.body, unsupported_nodes, unsupported_operations, reasons)
+        else:
+            unsupported_nodes.append(node.id)
+            reasons.append(f"node_kind_not_supported:{node.kind}")

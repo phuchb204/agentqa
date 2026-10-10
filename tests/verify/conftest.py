@@ -85,6 +85,15 @@ class FakeFacts:
         visibles: dict[str, bool] | None = None,
         attributes: dict[tuple[str, str], str | None] | None = None,
         evidence: dict[str, EvidenceStatus] | None = None,
+        values: dict[str, str | None] | None = None,
+        checkeds: dict[str, bool | None] | None = None,
+        enableds: dict[str, bool | None] | None = None,
+        captures: dict[str, object] | None = None,
+        parameters: dict[str, object] | None = None,
+        network: list | None = None,
+        downloads: list | None = None,
+        baselines: dict[str, bytes] | None = None,
+        screenshot: bytes | None = None,
     ) -> None:
         self._url = url
         self._counts = dict(counts or {})
@@ -92,6 +101,15 @@ class FakeFacts:
         self._visibles = dict(visibles or {})
         self._attributes = dict(attributes or {})
         self._evidence = dict(evidence or {})
+        self._values = dict(values or {})
+        self._checkeds = dict(checkeds or {})
+        self._enableds = dict(enableds or {})
+        self._captures = dict(captures or {})
+        self._parameters = dict(parameters or {})
+        self._network = list(network or [])
+        self._downloads = list(downloads or [])
+        self._baselines = dict(baselines or {})
+        self._screenshot = screenshot
 
     def url(self) -> str:
         return self._url
@@ -103,16 +121,60 @@ class FakeFacts:
         return self._texts.get(target_descriptor.intent)
 
     def value(self, target_descriptor: TargetDescriptor) -> str | None:
+        if target_descriptor.intent in self._values:
+            return self._values[target_descriptor.intent]
         return self._texts.get(target_descriptor.intent)
 
     def visible(self, target_descriptor: TargetDescriptor) -> bool:
         return self._visibles.get(target_descriptor.intent, False)
 
+    def hidden(self, target_descriptor: TargetDescriptor) -> bool:
+        if target_descriptor.intent in self._visibles:
+            return not self._visibles[target_descriptor.intent]
+        return self.count(target_descriptor) > 0
+
     def attribute(self, target_descriptor: TargetDescriptor, name: str) -> str | None:
         return self._attributes.get((target_descriptor.intent, name))
 
+    def checked(self, target_descriptor: TargetDescriptor) -> bool | None:
+        return self._checkeds.get(target_descriptor.intent)
+
+    def enabled(self, target_descriptor: TargetDescriptor) -> bool | None:
+        return self._enableds.get(target_descriptor.intent)
+
     def evidence_status(self, assertion_id: str) -> EvidenceStatus:
         return self._evidence.get(assertion_id, EvidenceStatus.PRESENT)
+
+    def capture(self, name: str) -> object | None:
+        return self._captures.get(name)
+
+    def parameter(self, name: str) -> object | None:
+        return self._parameters.get(name)
+
+    def network(self, filter) -> list:
+        from urllib.parse import urlsplit
+
+        matched = []
+        for entry in self._network:
+            if filter.method and entry.method.upper() != filter.method.upper():
+                continue
+            if filter.path_contains and filter.path_contains not in urlsplit(entry.url).path:
+                continue
+            if filter.status is not None and entry.status != filter.status:
+                continue
+            if filter.body_contains and (entry.body_excerpt is None or filter.body_contains not in entry.body_excerpt):
+                continue
+            matched.append(entry)
+        return matched
+
+    def downloads(self) -> list:
+        return list(self._downloads)
+
+    def baseline(self, ref: str) -> bytes | None:
+        return self._baselines.get(ref)
+
+    def screenshot(self) -> bytes | None:
+        return self._screenshot
 
     def set_count(self, intent: str, value: int) -> None:
         self._counts[intent] = value

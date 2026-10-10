@@ -10,6 +10,7 @@ from agentqa.contracts.observation import Modality
 from agentqa.contracts.values import StrictModel
 from agentqa.platform.api.deps import authenticate, enforce_browser_guard, get_runtime, to_api_error
 from agentqa.platform.api.error_models import ApiError
+from agentqa.platform.healing import HealingService
 from agentqa.platform.identity.models import IdentityError, Permission
 from agentqa.platform.runs.read_models import RunReadModel
 from agentqa.platform.runs.service import SubmitRequest
@@ -131,6 +132,37 @@ class UsageSummaryResponse(StrictModel):
     cost_currency: str | None = None
 
 
+class HealingRecordResponse(StrictModel):
+    record_id: UUID
+    run_id: UUID
+    execution_id: UUID | None = None
+    attempt_id: UUID | None = None
+    actor: str
+    node_id: str
+    opportunity_id: str
+    attempt_ref: str
+    decision: str
+    ranking: dict | None = None
+    expected_signature: str | None = None
+    actual_signature: str | None = None
+    original_target: dict | None = None
+    actual_target: dict | None = None
+    dispatch_outcome: str | None = None
+    guard_checks: list[str] = []
+    postconditions_ok: bool | None = None
+    refusal_reason: str | None = None
+    error: str | None = None
+    proposal: dict | None = None
+    source_run_id: UUID | None = None
+    case_id: UUID | None = None
+    case_revision_id: UUID | None = None
+    recorded_at: datetime
+
+
+class HealingListResponse(StrictModel):
+    items: list[HealingRecordResponse]
+
+
 class SnapshotSummaryResponse(StrictModel):
     policy: str | None = None
     observation_mode: str | None = None
@@ -206,6 +238,8 @@ class ComparisonResponse(StrictModel):
     config_diff: list[ConfigDiffResponse]
     metrics: dict[str, ComparisonMetricResponse]
     alignment: list[AlignmentResponse]
+    provenance: dict | None = None
+    denominators: dict | None = None
 
 
 async def _require(request: Request, workspace_id: UUID, permission: Permission):
@@ -338,9 +372,22 @@ async def get_run_detail(request: Request, workspace_id: UUID, run_id: UUID) -> 
 @router.get("/workspaces/{workspace_id}/runs/{run_id}/comparison", response_model=ComparisonResponse)
 async def compare_runs(request: Request, workspace_id: UUID, run_id: UUID, against: UUID) -> ComparisonResponse:
     principal = await _require(request, workspace_id, Permission.WORKSPACE_READ)
-    comparison = await _read_model(request).run_comparison(
+    runtime = get_runtime(request)
+    comparison = await runtime.comparison.compare(
         workspace_id=workspace_id, principal_id=principal.user_id, run_a=run_id, run_b=against
     )
     if comparison is None:
         raise ApiError(404, ErrorCode.NOT_FOUND, "Không tìm thấy run để so sánh")
     return ComparisonResponse.model_validate(comparison)
+
+
+@router.get("/workspaces/{workspace_id}/runs/{run_id}/healing", response_model=HealingListResponse)
+async def list_run_healing(request: Request, workspace_id: UUID, run_id: UUID) -> HealingListResponse:
+    principal = await _require(request, workspace_id, Permission.WORKSPACE_READ)
+    runtime = get_runtime(request)
+    items = await HealingService(runtime.engines[ROLE_API]).list_for_run(
+        workspace_id=workspace_id, principal_id=principal.user_id, run_id=run_id
+    )
+    if items is None:
+        raise ApiError(404, ErrorCode.NOT_FOUND, "Không tìm thấy run")
+    return HealingListResponse(items=[HealingRecordResponse.model_validate(item) for item in items])

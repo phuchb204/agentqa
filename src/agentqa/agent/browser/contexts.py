@@ -101,6 +101,13 @@ def origin_of(url: str) -> str | None:
     return f"{parts.scheme.lower()}://{parts.hostname.lower()}:{port}"
 
 
+@dataclass(frozen=True)
+class DialogPolicy:
+    action: str
+    expected_prompt: str | None = None
+    prompt_text: str | None = None
+
+
 @dataclass
 class BrowserLane:
     context_key: str
@@ -108,6 +115,9 @@ class BrowserLane:
     allowed_origins: tuple[str, ...]
     observation_version: int = 1
     pages: dict[str, Page] = field(default_factory=dict)
+    active_frame_key: str | None = None
+    dialog_policy: DialogPolicy | None = None
+    unhandled_dialogs: list[str] = field(default_factory=list)
 
     def next_observation_version(self) -> int:
         self.observation_version += 1
@@ -119,6 +129,8 @@ class ContextRegistry:
         self._browser = browser
         self._launch = launch
         self._lanes: dict[str, BrowserLane] = {}
+        self._wired_dialog_pages: set[int] = set()
+        self._dialog_tasks: set[object] = set()
 
     def lane(self, context_key: str) -> BrowserLane:
         lane = self._lanes.get(context_key)
@@ -153,7 +165,46 @@ class ContextRegistry:
             return existing
         page = lane.context.pages[0] if lane.context.pages else await lane.context.new_page()
         lane.pages[page_key] = page
+        self._wire_dialogs(lane, page)
         return page
+
+    def _wire_dialogs(self, lane: BrowserLane, page: Page) -> None:
+        if id(page) in self._wired_dialog_pages:
+            return
+        self._wired_dialog_pages.add(id(page))
+
+        async def handle(dialog) -> None:
+            policy = lane.dialog_policy
+            if policy is None:
+                lane.unhandled_dialogs.append((dialog.message or "")[:120])
+                await dialog.dismiss()
+                return
+            if policy.expected_prompt is not None and policy.expected_prompt not in (dialog.message or ""):
+                lane.unhandled_dialogs.append((dialog.message or "")[:120])
+                lane.dialog_policy = None
+                await dialog.dismiss()
+                return
+            lane.dialog_policy = None
+            if policy.action == "accept":
+                await dialog.accept(policy.prompt_text)
+            else:
+                await dialog.dismiss()
+
+        def on_dialog(dialog) -> None:
+            import asyncio
+
+            task = asyncio.ensure_future(handle(dialog))
+            self._dialog_tasks.add(task)
+            task.add_done_callback(self._dialog_tasks.discard)
+
+        page.on("dialog", on_dialog)
+
+    async def locator_root(self, context_key: str, page_key: str = "main") -> Page | Frame:
+        lane = self.lane(context_key)
+        page = await self.page(context_key, page_key)
+        if lane.active_frame_key is None:
+            return page
+        return await self.frame(context_key, page_key, lane.active_frame_key)
 
     async def bind_page(
         self,

@@ -9,11 +9,15 @@ import type {
   DiffEntry,
   Draft,
   DraftRun,
+  DiagnosticSummary,
   Entity,
   FieldError,
+  HealingRecord,
   Impact,
+  IssuePackageSummary,
   Membership,
   Promotion,
+  ReportSummary,
   Revision,
   RunComparison,
   RunDetail,
@@ -122,6 +126,14 @@ export interface ApiClient {
   ): Promise<RunList>;
   getRunState(workspaceId: string, runId: string): Promise<RunState>;
   getRunDetail(workspaceId: string, runId: string): Promise<RunDetail>;
+  listRunHealing(workspaceId: string, runId: string): Promise<HealingRecord[]>;
+  createRunReport(workspaceId: string, runId: string, format: string): Promise<ReportSummary>;
+  listRunReports(workspaceId: string, runId: string): Promise<ReportSummary[]>;
+  reportContentUrl(workspaceId: string, reportId: string): string;
+  createIssuePackage(workspaceId: string, runId: string): Promise<IssuePackageSummary>;
+  issuePackageContentUrl(workspaceId: string, packageId: string): string;
+  createRunDiagnostic(workspaceId: string, runId: string): Promise<DiagnosticSummary>;
+  listRunDiagnostics(workspaceId: string, runId: string): Promise<DiagnosticSummary[]>;
   compareRuns(workspaceId: string, runId: string, against: string): Promise<RunComparison>;
   requestControl(
     workspaceId: string,
@@ -556,6 +568,61 @@ export function createApiClient(
         params: { path: { workspace_id: workspaceId, run_id: runId } },
       });
       return unwrap<RunDetail>(result);
+    },
+    async listRunHealing(workspaceId, runId) {
+      const result = await client.GET("/api/v1/workspaces/{workspace_id}/runs/{run_id}/healing", {
+        params: { path: { workspace_id: workspaceId, run_id: runId } },
+      });
+      const body = await unwrap<{ items: HealingRecord[] }>(result);
+      return body.items;
+    },
+    async createRunReport(workspaceId, runId, format) {
+      const result = await client.POST("/api/v1/workspaces/{workspace_id}/runs/{run_id}/reports", {
+        params: { path: { workspace_id: workspaceId, run_id: runId } },
+        body: { format },
+      });
+      return unwrap<ReportSummary>(result);
+    },
+    async listRunReports(workspaceId, runId) {
+      const result = await client.GET("/api/v1/workspaces/{workspace_id}/runs/{run_id}/reports", {
+        params: { path: { workspace_id: workspaceId, run_id: runId } },
+      });
+      const body = await unwrap<{ items: ReportSummary[] }>(result);
+      return body.items;
+    },
+    reportContentUrl(workspaceId, reportId) {
+      return `/api/v1/workspaces/${workspaceId}/reports/${reportId}/content`;
+    },
+    async createIssuePackage(workspaceId, runId) {
+      const result = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/runs/{run_id}/issue-packages",
+        {
+          params: { path: { workspace_id: workspaceId, run_id: runId } },
+        },
+      );
+      return unwrap<IssuePackageSummary>(result);
+    },
+    issuePackageContentUrl(workspaceId, packageId) {
+      return `/api/v1/workspaces/${workspaceId}/issue-packages/${packageId}/content`;
+    },
+    async createRunDiagnostic(workspaceId, runId) {
+      const result = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/runs/{run_id}/diagnostics",
+        {
+          params: { path: { workspace_id: workspaceId, run_id: runId } },
+        },
+      );
+      return unwrap<DiagnosticSummary>(result);
+    },
+    async listRunDiagnostics(workspaceId, runId) {
+      const result = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/runs/{run_id}/diagnostics",
+        {
+          params: { path: { workspace_id: workspaceId, run_id: runId } },
+        },
+      );
+      const body = await unwrap<{ items: DiagnosticSummary[] }>(result);
+      return body.items;
     },
     async compareRuns(workspaceId, runId, against) {
       const result = await client.GET(

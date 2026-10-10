@@ -11,6 +11,8 @@ from uuid import UUID
 
 from agentqa.agent.browser import BrowserSession, PlaywrightActionPort, PlaywrightReadPort, SafeEvidenceService
 from agentqa.agent.browser.capture import MaskRegion
+from agentqa.agent.browser.files import DirectoryFileResolver
+from agentqa.agent.browser.journals import DownloadJournal, NetworkJournal
 from agentqa.agent.replay import PlaywrightSceneProvider
 from agentqa.contracts.actions import ActionCommand, ActionReceipt
 from agentqa.contracts.values import SensitiveValue
@@ -125,6 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fault-storage", action="store_true")
     parser.add_argument("--agent-models", choices=["none", "fake"], default="none")
     parser.add_argument("--agent-script", default="")
+    parser.add_argument("--upload-dir", default="")
     return parser
 
 
@@ -144,16 +147,21 @@ async def run(args: argparse.Namespace) -> None:
     taint = TaintRegistry()
     evidence = SafeEvidenceService(redactor=RedactionService(taint), sink=sink, taint=taint)
     broker = FixtureSecretBroker()
+    file_resolver = DirectoryFileResolver(args.upload_dir) if args.upload_dir else None
+    downloads = DownloadJournal()
+    network = NetworkJournal()
     action_port = PlaywrightActionPort(
         session.contexts,
         evidence,
         secret_resolver=broker,
         navigation_guard=policy,
+        file_resolver=file_resolver,
+        downloads=downloads,
     )
     executor: Any = LazyContextExecutor(action_port, session.contexts)
     if args.fault_loss_intent:
         executor = LossExecutor(action_port, args.fault_loss_intent)
-    read_port = PlaywrightReadPort(session.contexts, evidence)
+    read_port = PlaywrightReadPort(session.contexts, evidence, network=network, downloads=downloads)
     bridge = SelectorJournalBridge(
         dsn=args.dsn,
         workspace_id=UUID(args.workspace_id),
