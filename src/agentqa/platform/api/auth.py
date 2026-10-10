@@ -60,6 +60,10 @@ class TokenIssuedResponse(StrictModel):
     token: str
 
 
+class CsrfResponse(StrictModel):
+    csrf_token: str
+
+
 def _set_session_cookie(response: Response, request: Request, raw_token: str) -> None:
     runtime = get_runtime(request)
     response.set_cookie(
@@ -109,6 +113,18 @@ async def local_bootstrap(request: Request, payload: BootstrapRequest, response:
     return SessionResponse(
         user_id=result.user_id, username=result.username, csrf_token=result.csrf_token, expires_at=result.expires_at
     )
+
+
+@router.post("/csrf", response_model=CsrfResponse)
+async def refresh_csrf(request: Request) -> CsrfResponse:
+    await authenticate(request)
+    enforce_origin(request)
+    raw_token = session_cookie_value(request)
+    if raw_token is None:
+        raise ApiError(400, ErrorCode.INPUT_INVALID, "Cần session cookie để lấy CSRF token")
+    runtime = get_runtime(request)
+    csrf_token = await runtime.sessions.refresh_csrf(raw_token)
+    return CsrfResponse(csrf_token=csrf_token)
 
 
 @router.get("/session", response_model=PrincipalResponse)

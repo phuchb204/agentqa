@@ -5,10 +5,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from agentqa.contracts.errors import AgentQAValidationError, ErrorCode
+from agentqa.platform.api.artifacts import router as artifacts_router
 from agentqa.platform.api.auth import router as auth_router
+from agentqa.platform.api.authoring import router as authoring_router
+from agentqa.platform.api.bundles import router as bundles_router
 from agentqa.platform.api.controls import router as controls_router
 from agentqa.platform.api.error_models import ApiError, ErrorResponse, FieldErrorModel, HealthResponse
 from agentqa.platform.api.events import router as events_router
+from agentqa.platform.api.exploration import router as exploration_router
+from agentqa.platform.api.requirements import router as requirements_router
 from agentqa.platform.api.revisions import router as revisions_router
 from agentqa.platform.api.runs import router as runs_router
 from agentqa.platform.api.runtime import PlatformRuntime
@@ -20,6 +25,9 @@ from agentqa.platform.api.schemas import (
     schema_document,
     schema_json_text,
 )
+from agentqa.platform.api.sources import router as sources_router
+from agentqa.platform.api.streams import router as streams_router
+from agentqa.platform.api.webapp import SpaStaticFiles, web_dist_directory
 from agentqa.platform.api.workspaces import router as workspaces_router
 
 API_VERSION = "0.1.0"
@@ -111,6 +119,13 @@ def create_application(runtime: PlatformRuntime | None = None) -> FastAPI:
     app.include_router(runs_router)
     app.include_router(events_router)
     app.include_router(controls_router)
+    app.include_router(sources_router)
+    app.include_router(requirements_router)
+    app.include_router(authoring_router)
+    app.include_router(exploration_router)
+    app.include_router(bundles_router)
+    app.include_router(artifacts_router)
+    app.include_router(streams_router)
     app.include_router(revisions_router)
     app.add_api_route("/health/live", _health_live, methods=["GET"], response_model=HealthResponse)
     app.add_api_route("/api/v1/schemas", _list_schemas, methods=["GET"], response_model=None)
@@ -121,6 +136,9 @@ def create_application(runtime: PlatformRuntime | None = None) -> FastAPI:
         response_model=None,
         responses={404: {"model": ErrorResponse, "description": "Schema không tồn tại"}},
     )
+    web_dist = web_dist_directory()
+    if web_dist is not None:
+        app.mount("/", SpaStaticFiles(directory=str(web_dist), html=True), name="web")
     return app
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -104,11 +105,13 @@ class RunWorker:
                     sa.select(tables.run_snapshots).where(tables.run_snapshots.c.run_id == execution.run_id)
                 )
             ).one()
-            revision = (
-                await session.execute(
-                    sa.select(tables.case_revisions).where(tables.case_revisions.c.id == execution.case_revision_id)
-                )
-            ).one()
+            revision = None
+            if execution.case_revision_id is not None:
+                revision = (
+                    await session.execute(
+                        sa.select(tables.case_revisions).where(tables.case_revisions.c.id == execution.case_revision_id)
+                    )
+                ).one()
             environment_content: dict[str, Any] = {}
             environment_id = snapshot.content.get("environment_revision")
             if environment_id:
@@ -133,6 +136,13 @@ class RunWorker:
         for key in ("target_base_url", "fixture_ref", "namespace"):
             if not environment_content.get(key):
                 raise ExecutionLoadError(f"environment thiếu '{key}'")
+        if revision is not None:
+            case = CaseContent.model_validate(revision.content)
+        else:
+            draft_case = snapshot.content.get("draft_case")
+            if not draft_case:
+                raise ExecutionLoadError("draft case không tồn tại trong snapshot")
+            case = CaseContent.model_validate(draft_case)
         return ExecutionSpec(
             workspace_id=execution.workspace_id,
             principal_id=self.principal_id,
@@ -140,7 +150,7 @@ class RunWorker:
             execution_id=execution.id,
             attempt_id=attempt.id if attempt is not None else execution.id,
             logical_key=execution.logical_key,
-            case=CaseContent.model_validate(revision.content),
+            case=case,
             target_base_url=str(environment_content["target_base_url"]),
             fixture_ref=str(environment_content["fixture_ref"]),
             namespace=str(environment_content["namespace"]),
@@ -150,6 +160,7 @@ class RunWorker:
             policy=str(snapshot.content.get("policy", "replay")),
             observation_mode=str(snapshot.content.get("observation_mode", "semantic")),
             snapshot_digest=str(snapshot.content_digest or ""),
+            provisional=bool(snapshot.content.get("provisional")),
         )
 
     async def _pending_control(self, workspace_id: UUID, run_id: UUID) -> UUID | None:
@@ -177,6 +188,28 @@ class RunWorker:
                 .where(tables.executions.c.id == spec.execution_id)
                 .values(status=outcome.status, verdict=outcome.verdict, updated_at=datetime.now(UTC))
             )
+            for result in outcome.assertion_results:
+                await session.execute(
+                    sa.insert(tables.assertion_results).values(
+                        workspace_id=spec.workspace_id,
+                        run_id=spec.run_id,
+                        execution_id=spec.execution_id,
+                        checkpoint_id=result.step_id,
+                        assertion_id=result.assertion_id,
+                        result=result.status.value,
+                        proof_ref=json.dumps(
+                            {
+                                "expected": result.expected_redacted,
+                                "observed": result.observed_redacted,
+                                "evidence": result.evidence_status.value,
+                                "applicable": result.applicable,
+                                "reason": result.reason,
+                                "trace_refs": list(outcome.trace_refs),
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
+                )
             rows = (
                 await session.execute(
                     sa.select(tables.executions.c.status, tables.executions.c.verdict).where(
@@ -193,6 +226,7 @@ class RunWorker:
                     .values(
                         status=_compose_run_status(statuses, verdicts),
                         verdict=_compose_run_verdict(verdicts),
+                        gate=outcome.gate if len(rows) == 1 else None,
                         reasons=outcome.reasons,
                         finalized_at=datetime.now(UTC),
                         updated_at=datetime.now(UTC),

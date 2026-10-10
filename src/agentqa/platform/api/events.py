@@ -108,12 +108,30 @@ def _snapshot_state(state: dict | None) -> dict | None:
     if state is None:
         return None
     return {
+        "run_id": str(state["run_id"]),
         "status": state["status"],
         "verdict": state["verdict"],
+        "gate": state.get("gate"),
+        "reasons": list(state.get("reasons", [])),
+        "snapshot_digest": state.get("snapshot_digest"),
         "last_run_seq": state["last_run_seq"],
         "executions": [
             {"execution_id": str(item["execution_id"]), "status": item["status"], "verdict": item["verdict"]}
             for item in state["executions"]
+        ],
+        "controls": [
+            {
+                "control_id": str(item["control_id"]),
+                "action": item["action"],
+                "requested_at": item["requested_at"].isoformat()
+                if hasattr(item["requested_at"], "isoformat")
+                else item["requested_at"],
+                "effective_at": item["effective_at"].isoformat()
+                if hasattr(item["effective_at"], "isoformat")
+                else item["effective_at"],
+                "effective_reason": item["effective_reason"],
+            }
+            for item in state.get("controls", [])
         ],
     }
 

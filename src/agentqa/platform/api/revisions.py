@@ -183,6 +183,15 @@ async def create_application(request: Request, workspace_id: UUID, payload: Appl
     return EntityResponse(id=entity.id, logical_key=entity.logical_key)
 
 
+@router.get("/workspaces/{workspace_id}/applications", response_model=list[EntityResponse])
+async def list_applications(request: Request, workspace_id: UUID) -> list[EntityResponse]:
+    principal = await _require(request, workspace_id, Permission.WORKSPACE_READ)
+    entities = await _service(request).list_entities(
+        workspace_id=workspace_id, principal_id=principal.user_id, kind="environment"
+    )
+    return [EntityResponse(id=entity.id, logical_key=entity.logical_key) for entity in entities]
+
+
 @router.post("/workspaces/{workspace_id}/{kind}s", response_model=EntityResponse)
 async def create_entity(
     request: Request, workspace_id: UUID, kind: str, payload: EntityCreateRequest

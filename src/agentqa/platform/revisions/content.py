@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from agentqa.contracts.case import RequirementContent
 from agentqa.contracts.values import StrictModel
 
 
@@ -14,6 +15,8 @@ class EnvironmentRevisionContent(StrictModel):
     auth_profile: str | None = None
     fixture_refs: list[str] = Field(default_factory=list)
     role_binding: dict[str, str] = Field(default_factory=dict)
+    allowed_origins: list[str] = Field(default_factory=list)
+    allow_write_actions: bool = False
 
 
 class SuiteCaseRef(StrictModel):
@@ -46,6 +49,7 @@ class FixtureRevisionContent(StrictModel):
 
 CONTENT_MODELS = {
     "environment": EnvironmentRevisionContent,
+    "requirement": RequirementContent,
     "suite": SuiteRevisionContent,
     "dataset": DatasetRevisionContent,
     "fixture": FixtureRevisionContent,

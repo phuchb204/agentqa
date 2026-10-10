@@ -67,6 +67,7 @@ class ExecutionSpec:
     policy: str = "replay"
     observation_mode: str = "semantic"
     snapshot_digest: str = ""
+    provisional: bool = False
 
 
 @dataclass
@@ -477,7 +478,7 @@ class RunCoordinator:
             results=tuple(bundle.assertion_results),
             completion=completion,
             applicable=applicable,
-            revision_ready=True,
+            revision_ready=not spec.provisional,
         )
         run_result = reduce_verdict(spec.run_id, [attempt], required_assertions=plan.required_assertions)
         evidence_ok = not any(
@@ -490,9 +491,10 @@ class RunCoordinator:
             run_result.verdict,
             GateContext(
                 completed=completion.complete,
-                revision_ready=True,
+                revision_ready=not spec.provisional,
                 evidence_ok=evidence_ok,
                 degraded=bundle.degraded,
+                provisional=spec.provisional,
             ),
         )
         outcome_probe: dict[str, Any] | None = None
@@ -529,7 +531,9 @@ class RunCoordinator:
             verdict=run_result.verdict.value if run_result.verdict else None,
             gate=gate.result.value,
             gate_reasons=list(gate.reasons),
-            reasons=list(run_result.reasons) + (["cleanup_failed"] if cleanup_failed else []),
+            reasons=list(run_result.reasons)
+            + (["cleanup_failed"] if cleanup_failed else [])
+            + (["provisional"] if spec.provisional else []),
             capability=capability.as_dict(),
             steps=[
                 {

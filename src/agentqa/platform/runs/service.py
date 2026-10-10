@@ -6,20 +6,24 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
+import yaml
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agentqa.contracts.canonical import digest_content, digest_run_snapshot
+from agentqa.contracts.compiler import compile_case_document
 from agentqa.contracts.errors import ErrorCode
 from agentqa.contracts.observation import Modality
 from agentqa.contracts.runs import ControlAction, RunSnapshot
 from agentqa.platform.events.service import EventService
 from agentqa.platform.identity.models import IdentityError
+from agentqa.platform.revisions.service import validate_content
 from agentqa.platform.storage import tables
 from agentqa.platform.storage.database import create_session_factory
 from agentqa.platform.storage.scope import set_scope
 
 SUBMIT_OPERATION = "run.submit"
+DRAFT_SUBMIT_OPERATION = "run.submit_draft"
 
 
 class IdempotencyConflict(IdentityError):
@@ -67,6 +71,30 @@ class SubmitRequest:
 
 
 @dataclass(frozen=True)
+class DraftSubmitRequest:
+    workspace_id: UUID
+    principal_id: UUID
+    actor: str
+    idempotency_key: str
+    case_id: UUID
+    content: dict
+    environment_revision_id: UUID | None = None
+    observation_mode: Modality = Modality.SEMANTIC
+    gate_profile: str = "strict"
+    provided_capabilities: frozenset[str] = frozenset()
+
+    def portable(self) -> dict:
+        return {
+            "case_id": str(self.case_id),
+            "content_digest": digest_content(self.content),
+            "environment_revision_id": str(self.environment_revision_id) if self.environment_revision_id else None,
+            "observation_mode": self.observation_mode.value,
+            "gate_profile": self.gate_profile,
+            "provided_capabilities": sorted(self.provided_capabilities),
+        }
+
+
+@dataclass(frozen=True)
 class SubmitOutcome:
     run_id: UUID
     snapshot_digest: str
@@ -102,9 +130,19 @@ class RunService:
         try:
             return await self._submit_transaction(request, request_digest)
         except _ConcurrentReplay:
-            return await self._replay(request)
+            return await self._replay(request, operation=SUBMIT_OPERATION)
 
-    async def _replay(self, request: SubmitRequest) -> SubmitOutcome:
+    async def submit_draft(self, request: DraftSubmitRequest) -> SubmitOutcome:
+        validate_content("case", request.content)
+        compiled = compile_case_document(yaml.safe_dump(request.content, allow_unicode=True, sort_keys=False))
+        capabilities = sorted(compiled.capabilities)
+        request_digest = digest_content(request.portable())
+        try:
+            return await self._submit_draft_transaction(request, request_digest, capabilities)
+        except _ConcurrentReplay:
+            return await self._replay(request, operation=DRAFT_SUBMIT_OPERATION)
+
+    async def _replay(self, request, *, operation: str = SUBMIT_OPERATION) -> SubmitOutcome:
         async with self._factory() as session, session.begin():
             await set_scope(session, principal_id=request.principal_id, workspace_id=request.workspace_id)
             existing = (
@@ -112,7 +150,7 @@ class RunService:
                     sa.select(tables.idempotency_keys).where(
                         tables.idempotency_keys.c.workspace_id == request.workspace_id,
                         tables.idempotency_keys.c.principal == str(request.principal_id),
-                        tables.idempotency_keys.c.operation == SUBMIT_OPERATION,
+                        tables.idempotency_keys.c.operation == operation,
                         tables.idempotency_keys.c.key == request.idempotency_key,
                     )
                 )
@@ -259,6 +297,166 @@ class RunService:
                         workspace_id=request.workspace_id,
                         principal=str(request.principal_id),
                         operation=SUBMIT_OPERATION,
+                        key=request.idempotency_key,
+                        request_digest=request_digest,
+                        response_ref=json.dumps(
+                            {
+                                "run_id": str(outcome.run_id),
+                                "snapshot_digest": outcome.snapshot_digest,
+                                "blocked": outcome.blocked,
+                                "blocked_reasons": list(outcome.blocked_reasons),
+                                "planned_executions": outcome.planned_executions,
+                                "status": outcome.status,
+                            }
+                        ),
+                    )
+                    .on_conflict_do_nothing(
+                        index_elements=[
+                            tables.idempotency_keys.c.workspace_id,
+                            tables.idempotency_keys.c.principal,
+                            tables.idempotency_keys.c.operation,
+                            tables.idempotency_keys.c.key,
+                        ]
+                    )
+                    .returning(tables.idempotency_keys.c.id)
+                )
+            ).scalar_one_or_none()
+            if inserted is None:
+                raise _ConcurrentReplay()
+        return outcome
+
+    async def _submit_draft_transaction(
+        self, request: DraftSubmitRequest, request_digest: str, capabilities: list[str]
+    ) -> SubmitOutcome:
+        async with self._factory() as session, session.begin():
+            await set_scope(session, principal_id=request.principal_id, workspace_id=request.workspace_id)
+            existing = (
+                await session.execute(
+                    sa.select(tables.idempotency_keys).where(
+                        tables.idempotency_keys.c.workspace_id == request.workspace_id,
+                        tables.idempotency_keys.c.principal == str(request.principal_id),
+                        tables.idempotency_keys.c.operation == DRAFT_SUBMIT_OPERATION,
+                        tables.idempotency_keys.c.key == request.idempotency_key,
+                    )
+                )
+            ).one_or_none()
+            if existing is not None:
+                if existing.request_digest != request_digest:
+                    raise IdempotencyConflict()
+                stored = json.loads(existing.response_ref or "{}")
+                return SubmitOutcome(
+                    run_id=UUID(stored["run_id"]),
+                    snapshot_digest=stored["snapshot_digest"],
+                    created=False,
+                    blocked=stored["blocked"],
+                    blocked_reasons=tuple(stored["blocked_reasons"]),
+                    planned_executions=stored["planned_executions"],
+                    status=stored["status"],
+                )
+            facts: list[str] = []
+            unsupported = sorted(set(capabilities) - request.provided_capabilities)
+            facts.extend(f"capability_unavailable:{cap}" for cap in unsupported)
+            case_row = (
+                await session.execute(
+                    sa.select(tables.cases.c.logical_key).where(
+                        tables.cases.c.workspace_id == request.workspace_id,
+                        tables.cases.c.id == request.case_id,
+                    )
+                )
+            ).one_or_none()
+            if case_row is None:
+                facts.append(f"unknown_case:{request.case_id}")
+            if request.environment_revision_id is not None:
+                environment = (
+                    await session.execute(
+                        sa.select(tables.environment_revisions.c.id).where(
+                            tables.environment_revisions.c.workspace_id == request.workspace_id,
+                            tables.environment_revisions.c.id == request.environment_revision_id,
+                            tables.environment_revisions.c.lifecycle == "ready",
+                        )
+                    )
+                ).one_or_none()
+                if environment is None:
+                    facts.append(f"unknown_environment_revision:{request.environment_revision_id}")
+            content_digest = digest_content(request.content)
+            snapshot = RunSnapshot(
+                snapshot_version=1,
+                content_digests=[content_digest],
+                environment_revision=request.environment_revision_id,
+                policy="replay",
+                observation_mode=request.observation_mode,
+                gate_profile=request.gate_profile,
+                provisional=True,
+                draft_case=request.content,
+            )
+            snapshot_content = snapshot.model_dump(mode="json")
+            snapshot_digest = digest_run_snapshot(snapshot_content)
+            run_id = uuid4()
+            blocked = bool(facts)
+            await session.execute(
+                sa.insert(tables.runs).values(
+                    id=run_id,
+                    workspace_id=request.workspace_id,
+                    status="queued",
+                    reasons=facts,
+                )
+            )
+            await session.execute(
+                sa.insert(tables.run_snapshots).values(
+                    workspace_id=request.workspace_id,
+                    run_id=run_id,
+                    snapshot_version=1,
+                    content=snapshot_content,
+                    content_digest=snapshot_digest,
+                )
+            )
+            planned = 0
+            if not blocked:
+                execution_id = uuid4()
+                await session.execute(
+                    sa.insert(tables.executions).values(
+                        id=execution_id,
+                        workspace_id=request.workspace_id,
+                        run_id=run_id,
+                        case_revision_id=None,
+                        logical_key=case_row.logical_key if case_row is not None else "draft",
+                        status="queued",
+                    )
+                )
+                await session.execute(
+                    sa.insert(tables.jobs).values(
+                        workspace_id=request.workspace_id,
+                        run_id=run_id,
+                        execution_id=execution_id,
+                        kind="browser_run",
+                        state="queued",
+                    )
+                )
+                planned = 1
+            await self._events.append(
+                session,
+                workspace_id=request.workspace_id,
+                run_id=run_id,
+                event_type="run.state_changed",
+                actor=request.actor,
+                payload={"status": "queued", "blocked": blocked, "provisional": True},
+            )
+            outcome = SubmitOutcome(
+                run_id=run_id,
+                snapshot_digest=snapshot_digest,
+                created=True,
+                blocked=blocked,
+                blocked_reasons=tuple(facts),
+                planned_executions=planned,
+                status="queued",
+            )
+            inserted = (
+                await session.execute(
+                    pg_insert(tables.idempotency_keys)
+                    .values(
+                        workspace_id=request.workspace_id,
+                        principal=str(request.principal_id),
+                        operation=DRAFT_SUBMIT_OPERATION,
                         key=request.idempotency_key,
                         request_digest=request_digest,
                         response_ref=json.dumps(

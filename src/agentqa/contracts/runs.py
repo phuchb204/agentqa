@@ -87,6 +87,8 @@ class RunSnapshot(StrictModel):
     cache_profile: str = "default"
     gate_profile: str = "default"
     calibration_ref: str | None = None
+    provisional: bool = False
+    draft_case: dict | None = None
 
 
 class StepInstance(StrictModel):

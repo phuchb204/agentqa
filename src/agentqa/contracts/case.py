@@ -22,11 +22,34 @@ class AnchorType(StrEnum):
     SECTION = "section"
     PAGE = "page"
     PARAGRAPH = "paragraph"
+    HEADING = "heading"
+    TABLE_CELL = "table_cell"
 
 
 class SourceAnchor(StrictModel):
     type: AnchorType
-    value: str | int
+    value: str | int | None = None
+    table_index: int | None = None
+    row: int | None = None
+    column: int | None = None
+
+    @model_validator(mode="after")
+    def require_anchor_target(self) -> SourceAnchor:
+        if self.type == AnchorType.TABLE_CELL:
+            if self.table_index is None or self.row is None or self.column is None:
+                raise AgentQAValidationError(
+                    [
+                        field_error(
+                            ("anchor",),
+                            ErrorCode.INPUT_INVALID,
+                            "Anchor table_cell cần table_index, row và column",
+                        )
+                    ]
+                )
+            return self
+        if self.value is None:
+            raise AgentQAValidationError([field_error(("anchor",), ErrorCode.INPUT_INVALID, "Anchor cần value")])
+        return self
 
 
 class SourceRef(StrictModel):
@@ -38,6 +61,7 @@ class SourceRef(StrictModel):
 
 
 class RequirementContent(StrictModel):
+    schema_version: Literal["requirement/1"] = "requirement/1"
     logical_key: str
     text: str
     source_refs: list[str] = []

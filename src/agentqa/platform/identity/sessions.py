@@ -111,6 +111,17 @@ class SessionService:
             )
             return await self._create_session(session, user_id=principal.user_id, username=principal.username)
 
+    async def refresh_csrf(self, raw_token: str) -> str:
+        principal = await self.authenticate(raw_token)
+        csrf_token = generate_token()
+        async with self._factory() as session, session.begin():
+            await session.execute(
+                sa.update(tables.sessions)
+                .where(tables.sessions.c.id == principal.session_id, tables.sessions.c.revoked_at.is_(None))
+                .values(csrf_hash=hash_token(csrf_token))
+            )
+        return csrf_token
+
     async def logout(self, raw_token: str) -> None:
         async with self._factory() as session, session.begin():
             await session.execute(

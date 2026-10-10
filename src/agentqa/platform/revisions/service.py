@@ -372,6 +372,42 @@ class RevisionService:
                     .returning(revision_table.c.id)
                 )
             ).scalar_one()
+            if kind == "case":
+                requirement_keys = [key for key in content.get("requirements", []) if isinstance(key, str)]
+                if requirement_keys:
+                    requirement_rows = (
+                        await session.execute(
+                            sa.select(tables.requirements.c.id).where(
+                                tables.requirements.c.workspace_id == workspace_id,
+                                tables.requirements.c.logical_key.in_(requirement_keys),
+                            )
+                        )
+                    ).all()
+                    source_names = sorted(str(key) for key in content.get("source_defs", {}))
+                    for requirement_row in requirement_rows:
+                        await session.execute(
+                            sa.insert(tables.case_source_links).values(
+                                workspace_id=workspace_id,
+                                case_id=entity_id,
+                                case_revision_id=revision_id,
+                                requirement_id=requirement_row.id,
+                                source_names=source_names,
+                                needs_review=False,
+                            )
+                        )
+            elif kind == "requirement":
+                await session.execute(
+                    sa.update(tables.case_source_links)
+                    .where(
+                        tables.case_source_links.c.workspace_id == workspace_id,
+                        tables.case_source_links.c.requirement_id == entity_id,
+                    )
+                    .values(
+                        needs_review=True,
+                        marked_by_requirement_revision=revision_id,
+                        review_marked_at=now,
+                    )
+                )
         return PromotionReceipt(
             revision_id=revision_id,
             entity_id=entity_id,

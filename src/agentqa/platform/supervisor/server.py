@@ -24,12 +24,14 @@ class SupervisorServer:
         host: str = "127.0.0.1",
         port: int = 0,
         coordinator: Any = None,
+        frame_provider: Any = None,
     ) -> None:
         self._runtime = runtime
         self._token = token
         self._host = host
         self._port = port
         self._coordinator = coordinator
+        self._frame_provider = frame_provider
         self._server: asyncio.AbstractServer | None = None
         self._monitor_stop: asyncio.Event | None = None
         self._monitor_task: asyncio.Task[None] | None = None
@@ -145,6 +147,11 @@ class SupervisorServer:
             if op == "session_view":
                 view = await self._runtime.session_view(payload["session_key"])
                 return {"ok": True, "result": view}
+            if op == "latest_frame":
+                if self._frame_provider is None:
+                    return {"ok": True, "result": {"frame": None}}
+                frame = await self._frame_provider(str(payload.get("session_key", "")))
+                return {"ok": True, "result": {"frame": frame}}
             if op == "run_execution":
                 if self._coordinator is None:
                     return {"ok": False, "error": {"code": "coordinator_missing", "message": "chưa cấu hình"}}
@@ -165,6 +172,7 @@ class SupervisorServer:
                     policy=str(payload.get("policy", "replay")),
                     observation_mode=str(payload.get("observation_mode", "semantic")),
                     snapshot_digest=str(payload.get("snapshot_digest", "")),
+                    provisional=bool(payload.get("provisional", False)),
                 )
                 outcome = await self._coordinator.execute(spec)
                 return {"ok": True, "result": outcome_to_dict(outcome)}

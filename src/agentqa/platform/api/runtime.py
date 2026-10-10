@@ -9,13 +9,21 @@ from typing import Literal
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agentqa.contracts.models import ProviderRoute
+from agentqa.contracts.ports import GenerativeModelPort
 from agentqa.platform.artifacts.service import ArtifactService
 from agentqa.platform.artifacts.store import FileSystemBlobStore
+from agentqa.platform.authoring.service import AuthoringService
+from agentqa.platform.bundles.service import BundleService
+from agentqa.platform.datasets.service import DatasetService
 from agentqa.platform.events.service import EventService
+from agentqa.platform.exploration.service import ExplorationPort, ExplorationService
+from agentqa.platform.extraction.service import ExtractionService
+from agentqa.platform.frames import BrowserFramePort, FrameEndpoint, SupervisorFrameClient
 from agentqa.platform.identity.authorization import AuthorizationService
 from agentqa.platform.identity.bootstrap import LocalBootstrapService
 from agentqa.platform.identity.sessions import DEFAULT_SESSION_TTL, SessionService, TokenService
 from agentqa.platform.identity.users import UserService
+from agentqa.platform.requirements.impact import RequirementImpactService
 from agentqa.platform.revisions.service import RevisionService
 from agentqa.platform.runs.service import RunService
 from agentqa.platform.security.credentials import CredentialService, EnvelopeService, MasterKeyring
@@ -23,8 +31,10 @@ from agentqa.platform.security.grants import GrantService
 from agentqa.platform.security.origin import OriginPolicy
 from agentqa.platform.security.redaction import RedactionService
 from agentqa.platform.security.taint import TAINT_REGISTRY, TaintRegistry
+from agentqa.platform.sources.service import SourceService
 from agentqa.platform.storage.database import create_engine
 from agentqa.platform.storage.roles import ROLE_API
+from agentqa.platform.suites.service import SuiteService
 from agentqa.platform.usage.service import UsageLedgerService
 
 DEFAULT_PROVIDER_ENDPOINTS: dict[ProviderRoute, str] = {
@@ -73,6 +83,15 @@ class PlatformRuntime:
     events: EventService
     usage: UsageLedgerService
     artifacts: ArtifactService
+    extraction: ExtractionService
+    sources: SourceService
+    requirement_impact: RequirementImpactService
+    authoring: AuthoringService
+    exploration: ExplorationService
+    bundles: BundleService
+    suites: SuiteService
+    datasets: DatasetService
+    browser_frames: BrowserFramePort | None
 
     @classmethod
     def build(
@@ -85,6 +104,9 @@ class PlatformRuntime:
         session_ttl: timedelta = DEFAULT_SESSION_TTL,
         provider_endpoints: Mapping[ProviderRoute, str] | None = None,
         artifact_store: FileSystemBlobStore | None = None,
+        generative_model: GenerativeModelPort | None = None,
+        exploration_port: ExplorationPort | None = None,
+        browser_frames: BrowserFramePort | None = None,
     ) -> PlatformRuntime:
         engines = {role: create_engine(dsn) for role, dsn in dsn_by_role.items()}
         api_engine = engines[ROLE_API]
@@ -101,6 +123,9 @@ class PlatformRuntime:
         )
         events = EventService(api_engine)
         store = artifact_store or FileSystemBlobStore(Path("artifacts") / "store")
+        extraction = ExtractionService()
+        revisions = RevisionService(api_engine)
+        usage = UsageLedgerService()
         return cls(
             profile=profile,
             engines=engines,
@@ -114,11 +139,30 @@ class PlatformRuntime:
             envelope=envelope,
             credentials=credentials,
             grants=grants,
-            revisions=RevisionService(api_engine),
+            revisions=revisions,
             runs=RunService(api_engine, events=events),
             events=events,
-            usage=UsageLedgerService(),
+            usage=usage,
             artifacts=ArtifactService(api_engine, store, taint=registry),
+            extraction=extraction,
+            sources=SourceService(
+                api_engine,
+                store=store,
+                extraction=extraction,
+                redaction=redaction,
+                taint=registry,
+            ),
+            requirement_impact=RequirementImpactService(api_engine),
+            authoring=AuthoringService(api_engine, model=generative_model, revisions=revisions, usage=usage),
+            exploration=ExplorationService(api_engine, port=exploration_port),
+            bundles=BundleService(api_engine, revisions=revisions),
+            suites=SuiteService(api_engine),
+            datasets=DatasetService(api_engine),
+            browser_frames=browser_frames
+            if browser_frames is not None
+            else (
+                SupervisorFrameClient(endpoint) if (endpoint := FrameEndpoint.from_environment()) is not None else None
+            ),
         )
 
     async def aclose(self) -> None:

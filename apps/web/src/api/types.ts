@@ -1,0 +1,355 @@
+export interface Entity {
+  id: string;
+  logical_key: string;
+}
+
+export interface Workspace {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+export interface Membership {
+  user_id: string;
+  role: string;
+  permission_flags: string[];
+}
+
+export interface SessionInfo {
+  user_id: string;
+  username: string;
+}
+
+export interface Revision {
+  revision_id: string;
+  entity_id: string;
+  revision_no: number;
+  content: Record<string, unknown>;
+  content_digest: string;
+  lifecycle: string;
+  author: string;
+  promoted_by?: string | null;
+  promoted_at?: string | null;
+  supersedes?: string | null;
+  archived_at?: string | null;
+}
+
+export interface Draft {
+  entity_id: string;
+  edit_version: number;
+  content: Record<string, unknown>;
+  updated_by: string;
+  updated_at: string;
+}
+
+export interface Promotion {
+  revision_id: string;
+  entity_id: string;
+  revision_no: number;
+  content_digest: string;
+  promoted_by: string;
+  promoted_at: string;
+  supersedes?: string | null;
+}
+
+export interface ImpactLink {
+  case_id: string;
+  logical_key: string;
+  case_revision_id: string;
+  revision_no: number;
+  needs_review: boolean;
+  source_names: string[];
+  affected_assertions: string[];
+  affected_nodes: string[];
+  review_marked_at: string | null;
+}
+
+export interface Impact {
+  requirement_id: string;
+  logical_key: string;
+  latest_revision_no: number | null;
+  links: ImpactLink[];
+}
+
+export interface SourceRevision {
+  revision_id: string;
+  source_id: string;
+  logical_key: string;
+  revision_no: number;
+  filename: string;
+  media_type: string;
+  size_bytes: number;
+  file_digest: string;
+  privacy_class: string;
+  state: string;
+  unextractable_reason: string | null;
+  created_at: string;
+  segment_count: number;
+}
+
+export interface SourceSegment {
+  ordinal: number;
+  anchor: Record<string, unknown>;
+  text: string;
+  text_digest: string;
+  privacy: string;
+}
+
+export interface SourceDetail {
+  revision: SourceRevision;
+  segments: SourceSegment[];
+}
+
+export interface ProposalProvenance {
+  path: string;
+  source: string;
+  ref?: string | null;
+}
+
+export interface Proposal {
+  proposal_id: string;
+  job_id: string;
+  title: string;
+  case_kind: string;
+  requirement_keys: string[];
+  content: Record<string, unknown>;
+  provenance: ProposalProvenance[];
+  status: string;
+  rejection_reason: string | null;
+}
+
+export interface AuthoringJob {
+  job_id: string;
+  kind: string;
+  state: string;
+  model_requested: string | null;
+  error_reason: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  proposals: Proposal[];
+}
+
+export interface DiffEntry {
+  op: string;
+  node_id?: string;
+  name?: string;
+  field?: string;
+  kind?: string;
+  before?: unknown;
+  after?: unknown;
+  provenance?: string;
+  assertions_added?: string[];
+  assertions_removed?: string[];
+  assertions_changed?: string[];
+}
+
+export interface ApplyResult {
+  proposal_id: string;
+  case_id: string;
+  edit_version: number;
+  content: Record<string, unknown>;
+  diff: DiffEntry[];
+}
+
+export interface DraftRun {
+  run_id: string;
+  snapshot_digest: string;
+  provisional: boolean;
+  blocked: boolean;
+  planned_executions: number;
+}
+
+export interface BindExecution {
+  execution_key: string;
+  case_logical_key: string;
+  case_revision_id: string | null;
+  dataset_row_index: number | null;
+  parameters: Record<string, unknown>;
+}
+
+export interface BindResult {
+  suite_revision_id: string;
+  suite_logical_key: string;
+  fixture_refs: string[];
+  executions: BindExecution[];
+  facts: string[];
+}
+
+export interface FieldError {
+  path: (string | number)[];
+  code: string;
+  message: string;
+}
+
+export interface RunListItem {
+  run_id: string;
+  status: string;
+  verdict: string | null;
+  gate: string | null;
+  annotations: string[];
+  reasons: string[];
+  policy: string | null;
+  observation_mode: string | null;
+  environment_revision_id: string | null;
+  created_at: string;
+  finalized_at: string | null;
+  executions: {
+    execution_id: string;
+    logical_key: string;
+    status: string;
+    verdict: string | null;
+  }[];
+}
+
+export interface RunList {
+  items: RunListItem[];
+  next_cursor: string | null;
+  total: number;
+}
+
+export interface AssertionDetail {
+  checkpoint_id: string;
+  assertion_id: string;
+  result: string;
+  proof: Record<string, unknown>;
+}
+
+export interface ExecutionDetail {
+  execution_id: string;
+  logical_key: string;
+  status: string;
+  verdict: string | null;
+  assertions: AssertionDetail[];
+}
+
+export interface ArtifactSummary {
+  artifact_id: string;
+  kind: string;
+  state: string;
+  media_type: string | null;
+  digest: string | null;
+  redacted: boolean;
+  unavailable_reason: string | null;
+}
+
+export interface RunDetail {
+  run_id: string;
+  status: string;
+  verdict: string | null;
+  gate: string | null;
+  reasons: string[];
+  annotations: string[];
+  terminal: boolean;
+  snapshot: {
+    policy: string | null;
+    observation_mode: string | null;
+    gate_profile: string | null;
+    cache_profile: string | null;
+    calibration_ref: string | null;
+    budgets: Record<string, number> | null;
+    content_digests: string[];
+    environment_revision: string | null;
+    provisional: boolean;
+  };
+  executions: ExecutionDetail[];
+  controls: {
+    control_id: string;
+    action: string;
+    requested_at: string;
+    effective_at: string | null;
+    effective_reason: string | null;
+  }[];
+  artifacts: ArtifactSummary[];
+  usage: {
+    state: string;
+    input_tokens: number;
+    output_tokens: number;
+    settled_calls: number;
+    unknown_calls: number;
+    cost_state: string;
+    cost_total: string | null;
+    cost_currency: string | null;
+  };
+}
+
+export interface ComparisonAssertion {
+  checkpoint_id: string;
+  assertion_id: string;
+  aligned: boolean;
+  a_status: string | null;
+  b_status: string | null;
+  a_expected: string | null;
+  b_expected: string | null;
+  a_observed: string | null;
+  b_observed: string | null;
+}
+
+export interface Alignment {
+  logical_key: string;
+  aligned: boolean;
+  reason: string | null;
+  a_status: string | null;
+  b_status: string | null;
+  a_verdict: string | null;
+  b_verdict: string | null;
+  assertions: ComparisonAssertion[];
+}
+
+export interface RunComparison {
+  run_a: string;
+  run_b: string;
+  config_diff: { field: string; a: unknown; b: unknown; equal: boolean }[];
+  metrics: Record<
+    string,
+    {
+      verdict: string | null;
+      status: string;
+      gate: string | null;
+      usage_state: string;
+      usage_input_tokens: number;
+      usage_output_tokens: number;
+      cost_state: string;
+      cost_total: string | null;
+      cost_currency: string | null;
+    }
+  >;
+  alignment: Alignment[];
+}
+
+export interface RunState {
+  run_id: string;
+  status: string;
+  verdict: string | null;
+  gate: string | null;
+  reasons: string[];
+  snapshot_digest: string | null;
+  last_run_seq: number;
+  executions: {
+    execution_id: string;
+    logical_key: string;
+    status: string;
+    verdict: string | null;
+  }[];
+  controls: {
+    control_id: string;
+    action: string;
+    requested_at: string;
+    effective_at: string | null;
+    effective_reason: string | null;
+  }[];
+}
+
+export interface RunEventView {
+  event_id: string;
+  run_seq: number;
+  execution_id: string | null;
+  execution_seq: number | null;
+  type: string;
+}
+
+export interface ErrorShape {
+  code: string;
+  message: string;
+  field_errors?: FieldError[];
+}

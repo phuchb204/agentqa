@@ -18,7 +18,9 @@ REVISION_TABLES = (
     "dataset_revisions",
     "fixture_revisions",
 )
-APPEND_ONLY_TABLES = ("run_events", "run_snapshots", "command_receipts", *REVISION_TABLES)
+APPEND_ONLY_TABLES = ("run_events", "run_snapshots", "command_receipts", "source_segments", *REVISION_TABLES)
+SOURCE_TABLES = ("sources", "source_revisions", "source_segments", "extraction_jobs", "case_source_links")
+AUTHORING_TABLES = ("authoring_jobs", "authoring_proposals", "exploration_results")
 BROWSER_COMMAND_TABLES = ("browser_sessions", "action_commands", "command_receipts")
 PARTITIONED_PAYLOAD_TABLES = ("run_event_payloads", "model_call_payloads")
 PARTITION_START = "2026-01-01"
@@ -186,6 +188,174 @@ case_revisions = _revision_table("case_revisions", entity_table="cases", entity_
 suite_revisions = _revision_table("suite_revisions", entity_table="suites", entity_column="suite_id")
 dataset_revisions = _revision_table("dataset_revisions", entity_table="datasets", entity_column="dataset_id")
 fixture_revisions = _revision_table("fixture_revisions", entity_table="fixtures", entity_column="fixture_id")
+
+sources = _logical_table("sources")
+
+source_revisions = sa.Table(
+    "source_revisions",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("source_id", sa.Uuid, nullable=False),
+    sa.Column("revision_no", sa.Integer, nullable=False),
+    sa.Column("filename", sa.Text, nullable=False),
+    sa.Column("media_type", sa.Text, nullable=False),
+    sa.Column("size_bytes", sa.BigInteger, nullable=False),
+    sa.Column("file_digest", sa.Text, nullable=False),
+    sa.Column("privacy_class", sa.Text, nullable=False, server_default=sa.text("'standard'")),
+    sa.Column("state", sa.Text, nullable=False, server_default=sa.text("'quarantined'")),
+    sa.Column("unextractable_reason", sa.Text),
+    sa.Column("object_key", sa.Text),
+    _created_col(),
+    _ws_id_unique("source_revisions"),
+    sa.UniqueConstraint("workspace_id", "source_id", "revision_no", name="uq_source_revisions_revision_no"),
+    sa.CheckConstraint("privacy_class IN ('standard', 'sensitive')", name="ck_source_revisions_privacy"),
+    sa.CheckConstraint(
+        "state IN ('quarantined', 'validated', 'extracted', 'unextractable', 'rejected')",
+        name="ck_source_revisions_state",
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "source_id"], ["sources.workspace_id", "sources.id"], name="fk_source_revisions_source"
+    ),
+)
+
+source_segments = sa.Table(
+    "source_segments",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("source_revision_id", sa.Uuid, nullable=False),
+    sa.Column("ordinal", sa.Integer, nullable=False),
+    sa.Column("anchor", postgresql.JSONB, nullable=False),
+    sa.Column("text", sa.Text, nullable=False),
+    sa.Column("text_digest", sa.Text, nullable=False),
+    sa.Column("privacy", sa.Text, nullable=False, server_default=sa.text("'safe'")),
+    _created_col(),
+    _ws_id_unique("source_segments"),
+    sa.UniqueConstraint("source_revision_id", "ordinal", name="uq_source_segments_ordinal"),
+    sa.CheckConstraint("privacy IN ('safe', 'redacted')", name="ck_source_segments_privacy"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "source_revision_id"],
+        ["source_revisions.workspace_id", "source_revisions.id"],
+        name="fk_source_segments_revision",
+    ),
+)
+
+extraction_jobs = sa.Table(
+    "extraction_jobs",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("source_revision_id", sa.Uuid, nullable=False),
+    sa.Column("state", sa.Text, nullable=False, server_default=sa.text("'queued'")),
+    sa.Column("reason", sa.Text),
+    _created_col(),
+    sa.Column("started_at", sa.DateTime(timezone=True)),
+    sa.Column("finished_at", sa.DateTime(timezone=True)),
+    _ws_id_unique("extraction_jobs"),
+    sa.CheckConstraint(
+        "state IN ('queued', 'running', 'succeeded', 'unextractable', 'failed')", name="ck_extraction_jobs_state"
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "source_revision_id"],
+        ["source_revisions.workspace_id", "source_revisions.id"],
+        name="fk_extraction_jobs_revision",
+    ),
+)
+
+case_source_links = sa.Table(
+    "case_source_links",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("case_id", sa.Uuid, nullable=False),
+    sa.Column("case_revision_id", sa.Uuid, nullable=False),
+    sa.Column("requirement_id", sa.Uuid, nullable=False),
+    sa.Column("source_names", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("needs_review", sa.Boolean, nullable=False, server_default=sa.text("false")),
+    sa.Column("marked_by_requirement_revision", sa.Uuid),
+    sa.Column("review_marked_at", sa.DateTime(timezone=True)),
+    _created_col(),
+    _ws_id_unique("case_source_links"),
+    sa.UniqueConstraint("case_revision_id", "requirement_id", name="uq_case_source_links_revision_requirement"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "case_id"], ["cases.workspace_id", "cases.id"], name="fk_case_source_links_case"
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "case_revision_id"],
+        ["case_revisions.workspace_id", "case_revisions.id"],
+        name="fk_case_source_links_revision",
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "requirement_id"],
+        ["requirements.workspace_id", "requirements.id"],
+        name="fk_case_source_links_requirement",
+    ),
+)
+
+authoring_jobs = sa.Table(
+    "authoring_jobs",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("kind", sa.Text, nullable=False, server_default=sa.text("'authoring'")),
+    sa.Column("state", sa.Text, nullable=False, server_default=sa.text("'queued'")),
+    sa.Column("input", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("model_requested", sa.Text),
+    sa.Column("error_reason", sa.Text),
+    _created_col(),
+    sa.Column("started_at", sa.DateTime(timezone=True)),
+    sa.Column("finished_at", sa.DateTime(timezone=True)),
+    _ws_id_unique("authoring_jobs"),
+    sa.CheckConstraint("kind IN ('authoring', 'exploration')", name="ck_authoring_jobs_kind"),
+    sa.CheckConstraint("state IN ('queued', 'running', 'succeeded', 'failed')", name="ck_authoring_jobs_state"),
+)
+
+authoring_proposals = sa.Table(
+    "authoring_proposals",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("job_id", sa.Uuid, nullable=False),
+    sa.Column("title", sa.Text, nullable=False),
+    sa.Column("case_kind", sa.Text, nullable=False),
+    sa.Column("requirement_keys", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("content", postgresql.JSONB, nullable=False),
+    sa.Column("provenance", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("status", sa.Text, nullable=False, server_default=sa.text("'proposed'")),
+    sa.Column("rejection_reason", sa.Text),
+    _created_col(),
+    _ws_id_unique("authoring_proposals"),
+    sa.CheckConstraint("case_kind IN ('positive', 'negative', 'boundary')", name="ck_authoring_proposals_case_kind"),
+    sa.CheckConstraint("status IN ('proposed', 'rejected', 'applied')", name="ck_authoring_proposals_status"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "job_id"],
+        ["authoring_jobs.workspace_id", "authoring_jobs.id"],
+        name="fk_authoring_proposals_job",
+    ),
+)
+
+exploration_results = sa.Table(
+    "exploration_results",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("job_id", sa.Uuid, nullable=False),
+    sa.Column("environment_revision_id", sa.Uuid),
+    sa.Column("write_allowed", sa.Boolean, nullable=False, server_default=sa.text("false")),
+    sa.Column("pages", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("actions", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("coverage_gaps", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("proposals", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    _created_col(),
+    _ws_id_unique("exploration_results"),
+    sa.UniqueConstraint("job_id", name="uq_exploration_results_job"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "job_id"],
+        ["authoring_jobs.workspace_id", "authoring_jobs.id"],
+        name="fk_exploration_results_job",
+    ),
+)
 
 case_drafts = sa.Table(
     "case_drafts",
@@ -850,6 +1020,16 @@ API_INSERT_TABLES = (
     "dataset_revisions",
     "fixtures",
     "fixture_revisions",
+    "sources",
+    "source_revisions",
+    "source_segments",
+    "extraction_jobs",
+    "case_source_links",
+    "authoring_jobs",
+    "authoring_proposals",
+    "exploration_results",
+    "model_calls",
+    "usage_entries",
     "runs",
     "run_snapshots",
     "executions",
@@ -889,6 +1069,12 @@ API_UPDATE_TABLES = (
     "credential_records",
     "credential_grants",
     "resource_slots",
+    "source_revisions",
+    "extraction_jobs",
+    "case_source_links",
+    "authoring_jobs",
+    "authoring_proposals",
+    "model_calls",
     *REVISION_TABLES,
 )
 API_DELETE_TABLES = ("memberships",)
@@ -991,8 +1177,18 @@ def _create_functions(connection: sa.Connection) -> None:
     )
 
 
+def _existing_table_names(connection: sa.Connection) -> set[str]:
+    rows = connection.execute(
+        sa.text("SELECT relname FROM pg_class WHERE relkind IN ('r', 'p') AND relnamespace = 'public'::regnamespace")
+    ).scalars()
+    return set(rows)
+
+
 def _create_triggers(connection: sa.Connection) -> None:
+    existing = _existing_table_names(connection)
     for table in APPEND_ONLY_TABLES:
+        if table not in existing:
+            continue
         connection.execute(
             sa.text(
                 f"CREATE OR REPLACE TRIGGER {table}_append_only BEFORE UPDATE OR DELETE ON {table} "
@@ -1000,6 +1196,8 @@ def _create_triggers(connection: sa.Connection) -> None:
             )
         )
     for table in REVISION_TABLES:
+        if table not in existing:
+            continue
         connection.execute(sa.text(f"DROP TRIGGER IF EXISTS {table}_append_only ON {table}"))
         connection.execute(sa.text(f"DROP TRIGGER IF EXISTS {table}_guard ON {table}"))
         connection.execute(
@@ -1046,7 +1244,10 @@ def _create_partitions(connection: sa.Connection) -> None:
 def _enable_rls(connection: sa.Connection) -> None:
     predicate = _scope_predicate()
     roles = ", ".join(APP_ROLES)
+    existing = _existing_table_names(connection)
     for table in RLS_TABLE_NAMES:
+        if table not in existing:
+            continue
         connection.execute(sa.text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
         connection.execute(sa.text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
         connection.execute(sa.text(f"DROP POLICY IF EXISTS workspace_scope ON {table}"))
@@ -1076,27 +1277,29 @@ def _enable_rls(connection: sa.Connection) -> None:
     )
 
 
-def _grant(connection: sa.Connection, role: str, privilege: str, tables: Sequence[str]) -> None:
-    if not tables:
+def _grant(connection: sa.Connection, role: str, privilege: str, tables: Sequence[str], existing: set[str]) -> None:
+    present = [name for name in tables if name in existing]
+    if not present:
         return
-    connection.execute(sa.text(f"GRANT {privilege} ON {', '.join(tables)} TO {role}"))
+    connection.execute(sa.text(f"GRANT {privilege} ON {', '.join(present)} TO {role}"))
 
 
 def _grant_privileges(connection: sa.Connection) -> None:
+    existing = _existing_table_names(connection)
     all_tables = [table.name for table in metadata.sorted_tables]
-    _grant(connection, "agentqa_api", "SELECT", all_tables)
-    _grant(connection, "agentqa_api", "INSERT", API_INSERT_TABLES)
-    _grant(connection, "agentqa_api", "UPDATE", API_UPDATE_TABLES)
-    _grant(connection, "agentqa_api", "DELETE", API_DELETE_TABLES)
-    _grant(connection, "agentqa_worker", "SELECT", all_tables)
-    _grant(connection, "agentqa_worker", "INSERT", WORKER_INSERT_TABLES)
-    _grant(connection, "agentqa_worker", "UPDATE", WORKER_UPDATE_TABLES)
-    _grant(connection, "agentqa_supervisor", "SELECT", SUPERVISOR_READ_TABLES)
-    _grant(connection, "agentqa_supervisor", "INSERT", SUPERVISOR_INSERT_TABLES)
-    _grant(connection, "agentqa_supervisor", "UPDATE", SUPERVISOR_UPDATE_TABLES)
-    _grant(connection, "agentqa_evaluator", "SELECT", EVALUATOR_READ_TABLES)
-    _grant(connection, "agentqa_evaluator", "INSERT", EVALUATOR_INSERT_TABLES)
-    _grant(connection, "agentqa_evaluator", "UPDATE", EVALUATOR_UPDATE_TABLES)
+    _grant(connection, "agentqa_api", "SELECT", all_tables, existing)
+    _grant(connection, "agentqa_api", "INSERT", API_INSERT_TABLES, existing)
+    _grant(connection, "agentqa_api", "UPDATE", API_UPDATE_TABLES, existing)
+    _grant(connection, "agentqa_api", "DELETE", API_DELETE_TABLES, existing)
+    _grant(connection, "agentqa_worker", "SELECT", all_tables, existing)
+    _grant(connection, "agentqa_worker", "INSERT", WORKER_INSERT_TABLES, existing)
+    _grant(connection, "agentqa_worker", "UPDATE", WORKER_UPDATE_TABLES, existing)
+    _grant(connection, "agentqa_supervisor", "SELECT", SUPERVISOR_READ_TABLES, existing)
+    _grant(connection, "agentqa_supervisor", "INSERT", SUPERVISOR_INSERT_TABLES, existing)
+    _grant(connection, "agentqa_supervisor", "UPDATE", SUPERVISOR_UPDATE_TABLES, existing)
+    _grant(connection, "agentqa_evaluator", "SELECT", EVALUATOR_READ_TABLES, existing)
+    _grant(connection, "agentqa_evaluator", "INSERT", EVALUATOR_INSERT_TABLES, existing)
+    _grant(connection, "agentqa_evaluator", "UPDATE", EVALUATOR_UPDATE_TABLES, existing)
 
 
 def create_core_schema(connection: sa.Connection) -> None:
@@ -1110,6 +1313,24 @@ def create_core_schema(connection: sa.Connection) -> None:
 
 def ensure_browser_command_schema(connection: sa.Connection) -> None:
     for table_name in BROWSER_COMMAND_TABLES:
+        metadata.tables[table_name].create(connection, checkfirst=True)
+    _create_functions(connection)
+    _create_triggers(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_sources_schema(connection: sa.Connection) -> None:
+    for table_name in SOURCE_TABLES:
+        metadata.tables[table_name].create(connection, checkfirst=True)
+    _create_functions(connection)
+    _create_triggers(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_authoring_schema(connection: sa.Connection) -> None:
+    for table_name in AUTHORING_TABLES:
         metadata.tables[table_name].create(connection, checkfirst=True)
     _create_functions(connection)
     _create_triggers(connection)

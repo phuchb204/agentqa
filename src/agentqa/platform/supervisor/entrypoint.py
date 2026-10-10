@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import json
 import sys
 import tempfile
@@ -9,6 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from agentqa.agent.browser import BrowserSession, PlaywrightActionPort, PlaywrightReadPort, SafeEvidenceService
+from agentqa.agent.browser.capture import MaskRegion
 from agentqa.agent.replay import PlaywrightSceneProvider
 from agentqa.contracts.actions import ActionCommand, ActionReceipt
 from agentqa.contracts.values import SensitiveValue
@@ -194,7 +196,40 @@ async def run(args: argparse.Namespace) -> None:
         agent_models=agent_models,
         taint=taint,
     )
-    server = SupervisorServer(runtime, token=args.control_token, port=args.port, coordinator=coordinator)
+    frame_state = {"seq": 0}
+
+    async def latest_frame(context_key: str) -> dict[str, Any] | None:
+        try:
+            page = await session.contexts.page(context_key)
+            png = await page.screenshot(type="png")
+            boxes = await page.evaluate(
+                "() => Array.from(document.querySelectorAll('input[type=password]')).map((el) => {"
+                " const r = el.getBoundingClientRect();"
+                " return {x: r.x, y: r.y, width: r.width, height: r.height}; })"
+            )
+            regions = [
+                MaskRegion(x=int(box["x"]), y=int(box["y"]), width=int(box["width"]), height=int(box["height"]))
+                for box in boxes
+            ]
+            masked = evidence.mask_image(png, regions)
+        except Exception:
+            return None
+        frame_state["seq"] += 1
+        viewport = page.viewport_size or {}
+        return {
+            "seq": frame_state["seq"],
+            "viewport": {"width": int(viewport.get("width", 0)), "height": int(viewport.get("height", 0))},
+            "dpr": 1.0,
+            "png_b64": base64.b64encode(masked).decode("ascii"),
+        }
+
+    server = SupervisorServer(
+        runtime,
+        token=args.control_token,
+        port=args.port,
+        coordinator=coordinator,
+        frame_provider=latest_frame,
+    )
     port = await server.start()
     print(json.dumps({"port": port, "proxy": proxy.url}), flush=True)
     try:
