@@ -16,6 +16,10 @@ export function canReadWorkspace(role: Role | undefined): boolean {
   return role !== undefined;
 }
 
+export function canManageSettings(role: Role | undefined): boolean {
+  return role === "owner";
+}
+
 export function roleLabel(role: Role | undefined): string {
   switch (role) {
     case "owner":

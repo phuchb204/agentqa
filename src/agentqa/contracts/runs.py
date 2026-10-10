@@ -18,6 +18,7 @@ class ExecutionStatus(StrEnum):
     WAITING = "waiting"
     CANCEL_REQUESTED = "cancel_requested"
     CANCELLED = "cancelled"
+    SKIPPED = "skipped"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     ERROR = "error"
@@ -45,6 +46,7 @@ class ControlAction(StrEnum):
 TERMINAL_STATUSES = frozenset(
     {
         ExecutionStatus.CANCELLED,
+        ExecutionStatus.SKIPPED,
         ExecutionStatus.SUCCEEDED,
         ExecutionStatus.FAILED,
         ExecutionStatus.ERROR,
@@ -77,6 +79,8 @@ class RunSnapshot(StrictModel):
     resolved_revision_ids: dict[str, UUID] = {}
     content_digests: list[str] = []
     environment_revision: UUID | None = None
+    suite_revision: UUID | None = None
+    dataset_revision: UUID | None = None
     fixture_refs: list[str] = []
     parameter_names: list[str] = []
     credential_versions: dict[str, int] = {}

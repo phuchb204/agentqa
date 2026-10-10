@@ -207,7 +207,7 @@ class SeedResult:
 
 class UiHarness:
     def __init__(self, *, scenario: str = "authoring", build_web: bool = True) -> None:
-        if scenario not in ("authoring", "live", "healing", "reporting"):
+        if scenario not in ("authoring", "live", "healing", "reporting", "admin"):
             raise HarnessError(f"scenario không hỗ trợ: {scenario}")
         self.scenario = scenario
         self.build_web = build_web
@@ -481,6 +481,33 @@ class UiHarness:
         document["logical_key"] = logical_key
         document["requirements"] = ["create_item"]
         return self.seed_case_document(logical_key=logical_key, document=document)
+
+    def seed_viewer(self, *, prefix: str = "ui-viewer") -> tuple[str, str]:
+        assert self.seed is not None
+        username = f"{prefix}-{secrets.token_hex(4)}"
+        password = "pw-viewer-123456"
+
+        async def seed() -> None:
+            runtime = PlatformRuntime.build(
+                profile=RuntimeProfile.local(),
+                dsn_by_role={ROLE_API: self.dsn_by_role[ROLE_API], ROLE_WORKER: self.dsn_by_role[ROLE_WORKER]},
+                artifact_store=FileSystemBlobStore(self.workspace_root / "blobs"),
+            )
+            try:
+                from agentqa.platform.identity.models import Role
+
+                user = await runtime.users.create(username=username, password=password)
+                await runtime.authorization.add_membership(
+                    workspace_id=self.seed.workspace_id,
+                    actor_id=self.seed.user_id,
+                    user_id=user.id,
+                    role=Role.VIEWER,
+                )
+            finally:
+                await runtime.aclose()
+
+        _run_db(seed())
+        return username, password
 
     def seed_case_document(self, *, logical_key: str, document: dict) -> UUID:
         assert self.seed is not None
@@ -852,6 +879,12 @@ def run_scenario(*, scenario: str = "authoring", build_web: bool = True) -> Harn
                 from tools.ui_harness.scenario_reporting import drive_reporting_flow
 
                 checks, _runs = _run_async(drive_reporting_flow(harness))
+                draft_run = {}
+                replay_run = None
+            elif scenario == "admin":
+                from tools.ui_harness.scenario_admin import drive_admin_flow
+
+                checks, _runs = _run_async(drive_admin_flow(harness))
                 draft_run = {}
                 replay_run = None
             else:

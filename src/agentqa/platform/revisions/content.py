@@ -29,8 +29,10 @@ class SuiteRevisionContent(StrictModel):
     logical_key: str
     case_refs: list[SuiteCaseRef]
     dataset_ref: str | None = None
+    dataset_revision_no: int | None = None
     fixture_refs: list[str] = Field(default_factory=list)
     execution_mode: Literal["serial", "parallel"] = "serial"
+    fail_fast: bool = False
 
 
 class DatasetRevisionContent(StrictModel):

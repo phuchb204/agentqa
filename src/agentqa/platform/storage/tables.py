@@ -424,14 +424,25 @@ executions = sa.Table(
     sa.Column("run_id", sa.Uuid, nullable=False),
     sa.Column("case_revision_id", sa.Uuid),
     sa.Column("logical_key", sa.Text, nullable=False),
+    sa.Column("execution_key", sa.Text),
+    sa.Column("dataset_row_index", sa.Integer),
+    sa.Column("parameters", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("status", sa.Text, nullable=False, server_default=sa.text("'queued'")),
     sa.Column("verdict", sa.Text),
+    sa.Column("gate", sa.Text),
     sa.Column("next_execution_seq", sa.Integer, nullable=False, server_default=sa.text("0")),
     _created_col(),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
     _ws_id_unique("executions"),
     sa.CheckConstraint("next_execution_seq >= 0", name="ck_executions_next_execution_seq"),
     sa.ForeignKeyConstraint(["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], name="fk_executions_run"),
+)
+sa.Index(
+    "uq_executions_run_execution_key",
+    executions.c.run_id,
+    executions.c.execution_key,
+    unique=True,
+    postgresql_where=sa.text("execution_key IS NOT NULL"),
 )
 
 attempts = sa.Table(
@@ -542,14 +553,148 @@ outbox_deliveries = sa.Table(
     _workspace_col(),
     sa.Column("topic", sa.Text, nullable=False),
     sa.Column("dedupe_key", sa.Text, nullable=False, unique=True),
+    sa.Column("endpoint_id", sa.Uuid),
     sa.Column("payload", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("state", sa.Text, nullable=False, server_default=sa.text("'pending'")),
     sa.Column("attempts", sa.Integer, nullable=False, server_default=sa.text("0")),
+    sa.Column("max_attempts", sa.Integer, nullable=False, server_default=sa.text("3")),
+    sa.Column("last_error", sa.Text),
     sa.Column("available_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
     _created_col(),
     sa.Column("delivered_at", sa.DateTime(timezone=True)),
     _ws_id_unique("outbox_deliveries"),
     sa.CheckConstraint("state IN ('pending', 'delivered', 'failed')", name="ck_outbox_deliveries_state"),
+)
+
+webhook_endpoints = sa.Table(
+    "webhook_endpoints",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("url", sa.Text, nullable=False),
+    sa.Column("credential_id", sa.Uuid, nullable=False),
+    sa.Column("credential_version", sa.Integer, nullable=False, server_default=sa.text("1")),
+    sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.text("true")),
+    _created_col(),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    _ws_id_unique("webhook_endpoints"),
+    sa.UniqueConstraint("workspace_id", "url", name="uq_webhook_endpoints_url"),
+)
+
+fixture_runs = sa.Table(
+    "fixture_runs",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("run_id", sa.Uuid),
+    sa.Column("execution_id", sa.Uuid),
+    sa.Column("attempt_id", sa.Uuid),
+    sa.Column("fixture_ref", sa.Text, nullable=False),
+    sa.Column("namespace", sa.Text, nullable=False),
+    sa.Column("action", sa.Text, nullable=False),
+    sa.Column("state", sa.Text, nullable=False, server_default=sa.text("'pending'")),
+    sa.Column("attempts", sa.Integer, nullable=False, server_default=sa.text("0")),
+    sa.Column("max_attempts", sa.Integer, nullable=False, server_default=sa.text("3")),
+    sa.Column("detail", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("available_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    sa.Column("claimed_by", sa.Text),
+    sa.Column("claim_epoch", sa.BigInteger, nullable=False, server_default=sa.text("0")),
+    sa.Column("lease_expires_at", sa.DateTime(timezone=True)),
+    _created_col(),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    _ws_id_unique("fixture_runs"),
+    sa.CheckConstraint("action IN ('prepare', 'reset', 'probe', 'cleanup')", name="ck_fixture_runs_action"),
+    sa.CheckConstraint(
+        "state IN ('pending', 'running', 'succeeded', 'failed', 'exhausted')", name="ck_fixture_runs_state"
+    ),
+    sa.ForeignKeyConstraint(["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], name="fk_fixture_runs_run"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "execution_id"],
+        ["executions.workspace_id", "executions.id"],
+        name="fk_fixture_runs_execution",
+    ),
+)
+sa.Index(
+    "uq_fixture_runs_execution_cleanup",
+    fixture_runs.c.execution_id,
+    unique=True,
+    postgresql_where=sa.text("execution_id IS NOT NULL AND action = 'cleanup'"),
+)
+
+schedules = sa.Table(
+    "schedules",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("logical_key", sa.Text, nullable=False),
+    sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.text("true")),
+    _created_col(),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    _ws_id_unique("schedules"),
+    sa.UniqueConstraint("workspace_id", "logical_key", name="uq_schedules_key"),
+)
+
+schedule_revisions = sa.Table(
+    "schedule_revisions",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("schedule_id", sa.Uuid, nullable=False),
+    sa.Column("revision_no", sa.Integer, nullable=False),
+    sa.Column("content", postgresql.JSONB, nullable=False),
+    sa.Column("content_digest", sa.Text, nullable=False),
+    _created_col(),
+    _ws_id_unique("schedule_revisions"),
+    sa.CheckConstraint("revision_no >= 1", name="ck_schedule_revisions_no"),
+    sa.UniqueConstraint("schedule_id", "revision_no", name="uq_schedule_revisions_no"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "schedule_id"],
+        ["schedules.workspace_id", "schedules.id"],
+        name="fk_schedule_revisions_schedule",
+    ),
+)
+
+schedule_occurrences = sa.Table(
+    "schedule_occurrences",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("schedule_id", sa.Uuid, nullable=False),
+    sa.Column("schedule_revision_id", sa.Uuid, nullable=False),
+    sa.Column("occurrence_key", sa.Text, nullable=False),
+    sa.Column("local_wall_time", sa.DateTime, nullable=False),
+    sa.Column("scheduled_at", sa.DateTime(timezone=True)),
+    sa.Column("fold", sa.Integer, nullable=False, server_default=sa.text("0")),
+    sa.Column("state", sa.Text, nullable=False, server_default=sa.text("'pending'")),
+    sa.Column("reason", sa.Text),
+    sa.Column("run_id", sa.Uuid),
+    sa.Column("claimed_by", sa.Text),
+    sa.Column("claim_epoch", sa.BigInteger, nullable=False, server_default=sa.text("0")),
+    sa.Column("lease_expires_at", sa.DateTime(timezone=True)),
+    _created_col(),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    _ws_id_unique("schedule_occurrences"),
+    sa.CheckConstraint(
+        "state IN ('pending', 'queued', 'claimed', 'skipped', 'missed')", name="ck_schedule_occurrences_state"
+    ),
+    sa.CheckConstraint("fold IN (0, 1)", name="ck_schedule_occurrences_fold"),
+    sa.UniqueConstraint("schedule_revision_id", "occurrence_key", name="uq_schedule_occurrences_key"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "schedule_id"],
+        ["schedules.workspace_id", "schedules.id"],
+        name="fk_schedule_occurrences_schedule",
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "schedule_revision_id"],
+        ["schedule_revisions.workspace_id", "schedule_revisions.id"],
+        name="fk_schedule_occurrences_revision",
+    ),
+)
+sa.Index(
+    "ix_schedule_occurrences_due",
+    schedule_occurrences.c.schedule_id,
+    schedule_occurrences.c.state,
+    schedule_occurrences.c.scheduled_at,
 )
 
 jobs = sa.Table(
@@ -974,7 +1119,7 @@ credential_records = sa.Table(
     _ws_id_unique("credential_records"),
     sa.UniqueConstraint("workspace_id", "credential_ref", "version", name="uq_credential_records_ref_version"),
     sa.CheckConstraint("kind IN ('env_ref', 'envelope')", name="ck_credential_records_kind"),
-    sa.CheckConstraint("status IN ('active', 'revoked', 'deleted')", name="ck_credential_records_status"),
+    sa.CheckConstraint("status IN ('active', 'revoked', 'rotated', 'deleted')", name="ck_credential_records_status"),
 )
 
 credential_nonce_registry = sa.Table(
@@ -1128,6 +1273,7 @@ SUPERVISOR_READ_TABLES = (
     "attempts",
     "run_events",
     "run_controls",
+    "fixture_runs",
     *BROWSER_COMMAND_TABLES,
 )
 EVALUATOR_READ_TABLES = ("runs", "executions", "run_events", "assertion_results", "healing_records", "artifacts")
@@ -1183,6 +1329,9 @@ API_INSERT_TABLES = (
     "diagnostics",
     "reports",
     "issue_packages",
+    "schedules",
+    "schedule_revisions",
+    "webhook_endpoints",
 )
 API_UPDATE_TABLES = (
     "users",
@@ -1212,6 +1361,8 @@ API_UPDATE_TABLES = (
     "authoring_jobs",
     "authoring_proposals",
     "model_calls",
+    "schedules",
+    "webhook_endpoints",
     *REVISION_TABLES,
 )
 API_DELETE_TABLES = ("memberships",)
@@ -1234,6 +1385,15 @@ WORKER_INSERT_TABLES = (
     "artifacts",
     "outbox_deliveries",
     "budget_reservations",
+    "fixture_runs",
+    "schedule_occurrences",
+    "schedules",
+    "schedule_revisions",
+    "runs",
+    "run_snapshots",
+    "executions",
+    "jobs",
+    "idempotency_keys",
 )
 WORKER_UPDATE_TABLES = (
     "runs",
@@ -1246,15 +1406,27 @@ WORKER_UPDATE_TABLES = (
     "budget_reservations",
     "outbox_deliveries",
     "resource_slots",
+    "fixture_runs",
+    "schedule_occurrences",
+    "schedules",
+    "runs",
 )
 SUPERVISOR_INSERT_TABLES = (
     "run_events",
     "run_controls",
     "decision_cache_entries",
     "decision_cache_receipts",
+    "fixture_runs",
     *BROWSER_COMMAND_TABLES,
 )
-SUPERVISOR_UPDATE_TABLES = ("action_commands", "browser_sessions", "run_controls", "runs", "executions")
+SUPERVISOR_UPDATE_TABLES = (
+    "action_commands",
+    "browser_sessions",
+    "run_controls",
+    "runs",
+    "executions",
+    "fixture_runs",
+)
 EVALUATOR_INSERT_TABLES: tuple[str, ...] = ()
 EVALUATOR_UPDATE_TABLES: tuple[str, ...] = ()
 
@@ -1432,6 +1604,12 @@ def _grant(connection: sa.Connection, role: str, privilege: str, tables: Sequenc
 
 def _grant_privileges(connection: sa.Connection) -> None:
     existing = _existing_table_names(connection)
+    if "alembic_version" in existing:
+        connection.execute(
+            sa.text(
+                "GRANT SELECT ON alembic_version TO agentqa_api, agentqa_worker, agentqa_supervisor, agentqa_evaluator"
+            )
+        )
     all_tables = [table.name for table in metadata.sorted_tables]
     _grant(connection, "agentqa_api", "SELECT", all_tables, existing)
     _grant(connection, "agentqa_api", "INSERT", API_INSERT_TABLES, existing)
@@ -1499,6 +1677,63 @@ def ensure_p22_schema(connection: sa.Connection) -> None:
     _create_functions(connection)
     _create_triggers(connection)
     _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_fixture_runs_schema(connection: sa.Connection) -> None:
+    metadata.tables["fixture_runs"].create(connection, checkfirst=True)
+    _create_functions(connection)
+    _create_triggers(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_outbox_webhook_schema(connection: sa.Connection) -> None:
+    metadata.tables["webhook_endpoints"].create(connection, checkfirst=True)
+    connection.execute(sa.text("ALTER TABLE outbox_deliveries ADD COLUMN IF NOT EXISTS endpoint_id uuid"))
+    connection.execute(
+        sa.text("ALTER TABLE outbox_deliveries ADD COLUMN IF NOT EXISTS max_attempts integer NOT NULL DEFAULT 3")
+    )
+    connection.execute(sa.text("ALTER TABLE outbox_deliveries ADD COLUMN IF NOT EXISTS last_error text"))
+    _create_functions(connection)
+    _create_triggers(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_p24_schema(connection: sa.Connection) -> None:
+    connection.execute(sa.text("ALTER TABLE credential_records DROP CONSTRAINT IF EXISTS ck_credential_records_status"))
+    connection.execute(
+        sa.text(
+            "ALTER TABLE credential_records ADD CONSTRAINT ck_credential_records_status "
+            "CHECK (status IN ('active', 'revoked', 'rotated', 'deleted'))"
+        )
+    )
+    _grant_privileges(connection)
+
+
+def ensure_schedules_schema(connection: sa.Connection) -> None:
+    for table_name in ("schedules", "schedule_revisions", "schedule_occurrences"):
+        metadata.tables[table_name].create(connection, checkfirst=True)
+    _create_functions(connection)
+    _create_triggers(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_p23_schema(connection: sa.Connection) -> None:
+    connection.execute(sa.text("ALTER TABLE executions ADD COLUMN IF NOT EXISTS execution_key text"))
+    connection.execute(sa.text("ALTER TABLE executions ADD COLUMN IF NOT EXISTS dataset_row_index integer"))
+    connection.execute(
+        sa.text("ALTER TABLE executions ADD COLUMN IF NOT EXISTS parameters jsonb NOT NULL DEFAULT '{}'::jsonb")
+    )
+    connection.execute(sa.text("ALTER TABLE executions ADD COLUMN IF NOT EXISTS gate text"))
+    connection.execute(
+        sa.text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_executions_run_execution_key "
+            "ON executions (run_id, execution_key) WHERE execution_key IS NOT NULL"
+        )
+    )
     _grant_privileges(connection)
 
 

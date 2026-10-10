@@ -134,6 +134,14 @@ export function Shell() {
               {item.label}
             </Link>
           ))}
+          <Link
+            to="/w/$workspaceId/settings/$section"
+            params={{ workspaceId, section: "references" }}
+            activeOptions={{ exact: false }}
+            activeProps={{ "data-status": "active" }}
+          >
+            Cài đặt
+          </Link>
         </nav>
       ) : (
         <nav className="app-shell__nav" aria-label="Điều hướng chính" />

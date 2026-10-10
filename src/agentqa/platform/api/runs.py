@@ -20,7 +20,8 @@ router = APIRouter(prefix="/api/v1", tags=["runs"])
 
 
 class SubmitRunRequest(StrictModel):
-    case_revision_ids: list[UUID]
+    case_revision_ids: list[UUID] = []
+    suite_revision_id: UUID | None = None
     environment_revision_id: UUID | None = None
     policy: str = "default"
     gate_profile: str = "default"
@@ -266,6 +267,7 @@ async def submit_run(request: Request, workspace_id: UUID, body: SubmitRunReques
                 actor=principal.username,
                 idempotency_key=idempotency_key,
                 case_revision_ids=tuple(body.case_revision_ids),
+                suite_revision_id=body.suite_revision_id,
                 environment_revision_id=body.environment_revision_id,
                 policy=body.policy,
                 observation_mode=Modality.SEMANTIC,

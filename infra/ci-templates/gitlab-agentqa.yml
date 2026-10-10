@@ -1,0 +1,19 @@
+agentqa-regression:
+  image: ghcr.io/astral-sh/uv:0.10.7
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+  variables:
+    AGENTQA_BASE_URL: $AGENTQA_BASE_URL
+  script:
+    - uvx --from agentqa agentqa --json suite submit
+        --workspace "$AGENTQA_WORKSPACE_ID"
+        --suite-revision "$AGENTQA_SUITE_REVISION"
+        --gate-profile strict > agentqa-result.json
+  artifacts:
+    when: always
+    paths:
+      - agentqa-result.json
+    expire_in: 30 days
+  # AGENTQA_TOKEN lấy từ CI/CD variables (masked secret); template không tự
+  # gửi email/issue hay upload tới dịch vụ ngoài.

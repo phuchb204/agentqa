@@ -230,6 +230,7 @@ async def seed_job(
     execution_id: UUID,
     kind: str = "browser_run",
     state: str = "queued",
+    payload: dict | None = None,
 ) -> UUID:
     async with scoped_transaction(engines[ROLE_API], principal_id=principal_id, workspace_id=workspace_id) as session:
         result = await session.execute(
@@ -240,6 +241,7 @@ async def seed_job(
                 execution_id=execution_id,
                 kind=kind,
                 state=state,
+                payload=payload or {},
             )
             .returning(tables.jobs.c.id)
         )

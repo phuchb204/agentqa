@@ -364,7 +364,8 @@ def _html_document(detail: dict[str, Any]) -> bytes:
 
 def _junit_document(detail: dict[str, Any]) -> bytes:
     executions = detail.get("executions", [])
-    total = sum(len(execution.get("assertions", [])) for execution in executions)
+    gate_marker = detail.get("gate") in ("refused", "error")
+    total = sum(len(execution.get("assertions", [])) for execution in executions) + (1 if gate_marker else 0)
     failures = sum(
         1
         for execution in executions
@@ -376,7 +377,7 @@ def _junit_document(detail: dict[str, Any]) -> bytes:
         for execution in executions
         for assertion in execution.get("assertions", [])
         if assertion.get("result") == "error"
-    )
+    ) + (1 if gate_marker else 0)
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<testsuites name="agentqa" tests="{total}" failures="{failures}" errors="{errors}">',
@@ -401,11 +402,13 @@ def _junit_document(detail: dict[str, Any]) -> bytes:
             else:
                 parts.append(f"<testcase name={quoteattr(name)}/>")
         parts.append("</testsuite>")
-    if detail.get("gate") == "refused":
+    gate = detail.get("gate")
+    if gate in ("refused", "error"):
         reasons = "; ".join(str(reason) for reason in detail.get("reasons", []))
+        gate_type = "gate_rejection" if gate == "refused" else "gate_error"
         parts.append(
             '<testsuite name="gate">'
-            f'<testcase name="gate_rejection"><error type="gate_rejection" message={quoteattr(reasons)}/>'
+            f"<testcase name={quoteattr(gate_type)}><error type={quoteattr(gate_type)} message={quoteattr(reasons)}/>"
             "</testcase></testsuite>"
         )
     parts.append("</testsuites>")

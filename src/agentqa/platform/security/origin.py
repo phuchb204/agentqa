@@ -50,6 +50,12 @@ class OriginPolicy:
         origins = frozenset(origin.rstrip("/").lower() for origin in allowed_origins)
         if not origins:
             raise SecurityError(ErrorCode.INPUT_INVALID, "Shared profile cần allowlist Origin")
+        for origin in origins:
+            scheme, host, _port = _split_origin(origin)
+            if scheme != "https":
+                raise SecurityError(ErrorCode.INPUT_INVALID, f"Shared origin phải dùng HTTPS: {origin}")
+            if is_loopback_host(host):
+                raise SecurityError(ErrorCode.INPUT_INVALID, f"Shared origin không được là loopback: {origin}")
         return cls(profile="shared", allowed_origins=origins)
 
     @property

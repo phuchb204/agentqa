@@ -30,6 +30,7 @@ from agentqa.platform.reports.service import ReportService
 from agentqa.platform.requirements.impact import RequirementImpactService
 from agentqa.platform.revisions.service import RevisionService
 from agentqa.platform.runs.service import RunService
+from agentqa.platform.scheduler import SchedulerService
 from agentqa.platform.security.credentials import CredentialService, EnvelopeService, MasterKeyring
 from agentqa.platform.security.grants import GrantService
 from agentqa.platform.security.origin import OriginPolicy
@@ -99,6 +100,7 @@ class PlatformRuntime:
     diagnostics: DiagnosticService
     reports: ReportService
     comparison: ComparisonService
+    scheduler: SchedulerService
     browser_frames: BrowserFramePort | None
 
     @classmethod
@@ -135,6 +137,7 @@ class PlatformRuntime:
         revisions = RevisionService(api_engine)
         usage = UsageLedgerService()
         artifacts = ArtifactService(api_engine, store, taint=registry)
+        runs_service = RunService(api_engine, events=events)
         return cls(
             profile=profile,
             engines=engines,
@@ -149,7 +152,7 @@ class PlatformRuntime:
             credentials=credentials,
             grants=grants,
             revisions=revisions,
-            runs=RunService(api_engine, events=events),
+            runs=runs_service,
             events=events,
             usage=usage,
             artifacts=artifacts,
@@ -171,6 +174,7 @@ class PlatformRuntime:
             diagnostics=DiagnosticService(api_engine, model=generative_model, usage=usage),
             reports=ReportService(api_engine, artifacts),
             comparison=ComparisonService(api_engine),
+            scheduler=SchedulerService(api_engine, run_service=runs_service),
             browser_frames=browser_frames
             if browser_frames is not None
             else (

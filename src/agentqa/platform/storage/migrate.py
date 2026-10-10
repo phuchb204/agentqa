@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from agentqa.platform.storage.roles import (
 
 MIGRATION_LOCK_KEY = 0x6167656E74716101
 REPO_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_SCRIPT_LOCATION = REPO_ROOT / "infra" / "migrations"
+DEFAULT_SCRIPT_LOCATION = Path(os.environ.get("AGENTQA_MIGRATIONS_DIR", str(REPO_ROOT / "infra" / "migrations")))
 
 
 def build_config(dsn: str, *, script_location: Path | None = None) -> Config:
@@ -49,6 +50,26 @@ async def _run_alembic(dsn: str, revision: str, *, downgrade: bool) -> None:
                 await connection.run_sync(run)
             finally:
                 await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": MIGRATION_LOCK_KEY})
+    finally:
+        await engine.dispose()
+
+
+def alembic_head_revision(*, script_location: Path | None = None) -> str:
+    from alembic.script import ScriptDirectory
+
+    config = build_config("postgresql+psycopg://placeholder", script_location=script_location)
+    script = ScriptDirectory.from_config(config)
+    head = script.get_current_head()
+    if head is None:
+        raise RuntimeError("Không xác định được head revision")
+    return head
+
+
+async def current_revision(dsn: str) -> str | None:
+    engine = create_async_engine(dsn)
+    try:
+        async with engine.connect() as connection:
+            return (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one_or_none()
     finally:
         await engine.dispose()
 

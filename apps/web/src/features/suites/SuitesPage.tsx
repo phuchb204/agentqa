@@ -6,8 +6,9 @@ import { ApiClientError } from "../../api/client";
 import { useApi } from "../../api/context";
 import type { BindResult } from "../../api/types";
 import { EmptyView, ErrorView, LoadingView } from "../../components/States";
-import { canEditCases } from "../../app/permissions";
+import { canEditCases, canManageSettings } from "../../app/permissions";
 import { useWorkspaceRole } from "../../app/use-role";
+import { SchedulePanel } from "./SchedulePanel";
 
 function errorMessage(error: unknown): string {
   return error instanceof ApiClientError ? error.message : "Thao tác thất bại";
@@ -23,6 +24,7 @@ export function SuitesPage({ workspaceId, suiteId }: { workspaceId: string; suit
   const queryClient = useQueryClient();
   const role = useWorkspaceRole(workspaceId);
   const canEdit = canEditCases(role);
+  const canManage = canManageSettings(role);
 
   const suitesQuery = useQuery({
     queryKey: ["suites", workspaceId],
@@ -58,6 +60,12 @@ export function SuitesPage({ workspaceId, suiteId }: { workspaceId: string; suit
   const latestRevision =
     revisionsQuery.data?.filter((revision) => revision.lifecycle === "ready").at(-1) ?? null;
   const selectedCases = useMemo(() => casesQuery.data ?? [], [casesQuery.data]);
+  const selectedDatasetId = datasetsQuery.data?.find((item) => item.logical_key === datasetRef)?.id;
+  const datasetRevisionsQuery = useQuery({
+    queryKey: ["dataset-revisions", workspaceId, selectedDatasetId],
+    queryFn: () => api.listDatasetRevisions(workspaceId, selectedDatasetId as string),
+    enabled: Boolean(selectedDatasetId),
+  });
 
   async function createSuite(logicalKey: string) {
     setMessage(null);
@@ -364,8 +372,47 @@ export function SuitesPage({ workspaceId, suiteId }: { workspaceId: string; suit
                 Lưu dataset revision
               </button>
               {datasetMessage ? <p role="status">{datasetMessage}</p> : null}
+              {selectedDatasetId && (datasetRevisionsQuery.data ?? []).length > 0 ? (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Dataset revision</th>
+                      <th>Lifecycle</th>
+                      <th>Rows</th>
+                      <th>Digest</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(datasetRevisionsQuery.data ?? []).map((revision) => (
+                      <tr key={revision.revision_id}>
+                        <td>v{revision.revision_no}</td>
+                        <td>{revision.lifecycle}</td>
+                        <td>
+                          {Array.isArray(revision.content.rows)
+                            ? (revision.content.rows as unknown[]).length
+                            : 0}
+                        </td>
+                        <td>
+                          <code>{revision.content_digest.slice(0, 12)}…</code>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
             </div>
           </section>
+
+          {latestRevision ? (
+            <SchedulePanel
+              workspaceId={workspaceId}
+              suiteRevisionId={latestRevision.revision_id}
+              canManage={canManage}
+              defaultLogicalKey={
+                suitesQuery.data?.find((item) => item.id === suiteId)?.logical_key ?? "suite"
+              }
+            />
+          ) : null}
         </>
       ) : (
         <EmptyView

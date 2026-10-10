@@ -1,0 +1,7 @@
+*
+!src
+!benchmarks
+!infra
+!pyproject.toml
+!uv.lock
+!README.md

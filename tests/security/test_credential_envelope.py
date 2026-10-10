@@ -149,14 +149,22 @@ async def test_rotation_creates_new_version_and_pins(runtime, role_engines: dict
         )
         assert second.version == first.version + 1
         assert second.credential_id != first.credential_id
-        first_value = await runtime.credentials.resolve(
-            session, workspace_id=workspace, credential_id=first.credential_id, version=first.version
-        )
+        with pytest.raises(SecurityError):
+            await runtime.credentials.resolve(
+                session, workspace_id=workspace, credential_id=first.credential_id, version=first.version
+            )
         second_value = await runtime.credentials.resolve(
             session, workspace_id=workspace, credential_id=second.credential_id, version=second.version
         )
-        assert first_value.reveal() == "value-one"
         assert second_value.reveal() == "value-two"
+        first_status = (
+            await session.execute(
+                sa.select(tables.credential_records.c.status).where(
+                    tables.credential_records.c.id == first.credential_id
+                )
+            )
+        ).scalar_one()
+        assert first_status == "rotated"
         row = (
             await session.execute(
                 sa.select(tables.credential_records.c.rotated_from).where(

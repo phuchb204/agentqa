@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -10,6 +11,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from agentqa.platform.queue.admission import (
+    DEFAULT_CAPACITIES,
+    ResourceKey,
+    default_resource_keys,
+    parse_resource_keys,
+)
 from agentqa.platform.storage.scope import set_scope
 from agentqa.platform.storage.tables import executions, jobs, resource_slots, runs, worker_leases
 
@@ -29,6 +36,7 @@ class ClaimResult:
     run_id: UUID | None
     execution_id: UUID | None
     resource_slot_id: UUID | None
+    resource_keys: tuple[ResourceKey, ...] = ()
 
 
 class JobQueue:
@@ -40,12 +48,14 @@ class JobQueue:
         principal_id: UUID,
         slot_scope: str = DEFAULT_SLOT_SCOPE,
         slot_capacity: int = DEFAULT_SLOT_CAPACITY,
+        resource_capacities: Mapping[str, int] | None = None,
     ) -> None:
         self._factory = session_factory
         self._workspace_id = workspace_id
         self._principal_id = principal_id
         self._slot_scope = slot_scope
         self._slot_capacity = slot_capacity
+        self._resource_capacities = dict(resource_capacities or {})
 
     def _transaction(self) -> Any:
         factory = self._factory
@@ -80,7 +90,7 @@ class JobQueue:
         interval = f"interval '{max(1, round(lease_seconds))} seconds'"
         try:
             async with self._transaction() as session:
-                candidate = (
+                candidates = (
                     await session.execute(
                         sa.select(jobs.c.id, jobs.c.run_id, jobs.c.execution_id)
                         .where(
@@ -90,35 +100,47 @@ class JobQueue:
                             jobs.c.available_at <= sa.func.now(),
                         )
                         .order_by(jobs.c.priority.desc(), jobs.c.available_at, jobs.c.id)
-                        .limit(1)
+                        .limit(8)
                     )
-                ).first()
-                if candidate is None:
+                ).all()
+                if not candidates:
                     return None
-                if candidate.run_id is not None:
-                    await session.execute(sa.select(runs.c.id).where(runs.c.id == candidate.run_id).with_for_update())
-                if candidate.execution_id is not None:
-                    await session.execute(
-                        sa.select(executions.c.id).where(executions.c.id == candidate.execution_id).with_for_update()
-                    )
-                job = (
-                    await session.execute(
-                        sa.select(jobs)
-                        .where(
-                            jobs.c.workspace_id == self._workspace_id,
-                            jobs.c.id == candidate.id,
-                            jobs.c.state == "queued",
+                job = None
+                for candidate in candidates:
+                    if candidate.run_id is not None:
+                        await session.execute(
+                            sa.select(runs.c.id).where(runs.c.id == candidate.run_id).with_for_update()
                         )
-                        .with_for_update(skip_locked=True)
-                    )
-                ).first()
+                    if candidate.execution_id is not None:
+                        await session.execute(
+                            sa.select(executions.c.id)
+                            .where(executions.c.id == candidate.execution_id)
+                            .with_for_update()
+                        )
+                    job = (
+                        await session.execute(
+                            sa.select(jobs)
+                            .where(
+                                jobs.c.workspace_id == self._workspace_id,
+                                jobs.c.id == candidate.id,
+                                jobs.c.state == "queued",
+                            )
+                            .with_for_update(skip_locked=True)
+                        )
+                    ).first()
+                    if job is not None:
+                        break
                 if job is None:
                     return None
+                keys = parse_resource_keys(
+                    (job.payload or {}).get("resource_keys"), fallback_workspace_id=self._workspace_id
+                )
                 slot_id = None
                 if require_slot:
-                    slot_id = await self._reserve_slot(session)
-                    if slot_id is None:
+                    reserved = await self._reserve_keys(session, keys)
+                    if reserved is None:
                         return None
+                    slot_id = reserved[0].id if reserved else None
                 epoch = job.claim_epoch + 1
                 await session.execute(
                     sa.update(jobs)
@@ -151,6 +173,7 @@ class JobQueue:
                     run_id=job.run_id,
                     execution_id=job.execution_id,
                     resource_slot_id=slot_id,
+                    resource_keys=tuple(keys),
                 )
         except SQLAlchemyError as exc:
             raise QueueUnavailable(str(exc)) from exc
@@ -218,14 +241,19 @@ class JobQueue:
         except SQLAlchemyError as exc:
             raise QueueUnavailable(str(exc)) from exc
 
-    async def _reserve_slot(self, session: AsyncSession) -> UUID | None:
+    def _capacity_for(self, scope: str) -> int:
+        if scope in self._resource_capacities:
+            return int(self._resource_capacities[scope])
+        return DEFAULT_CAPACITIES.get(scope, DEFAULT_SLOT_CAPACITY)
+
+    async def _lock_or_create_slot(self, session: AsyncSession, key: ResourceKey):
         row = (
             await session.execute(
                 sa.select(resource_slots)
                 .where(
                     resource_slots.c.workspace_id == self._workspace_id,
-                    resource_slots.c.scope == self._slot_scope,
-                    resource_slots.c.resource_key == str(self._workspace_id),
+                    resource_slots.c.scope == key.scope,
+                    resource_slots.c.resource_key == key.key,
                 )
                 .with_for_update()
             )
@@ -235,9 +263,9 @@ class JobQueue:
                 pg_insert(resource_slots)
                 .values(
                     workspace_id=self._workspace_id,
-                    scope=self._slot_scope,
-                    resource_key=str(self._workspace_id),
-                    capacity=self._slot_capacity,
+                    scope=key.scope,
+                    resource_key=key.key,
+                    capacity=self._capacity_for(key.scope),
                     reserved=0,
                 )
                 .on_conflict_do_nothing(index_elements=["workspace_id", "scope", "resource_key"])
@@ -247,18 +275,28 @@ class JobQueue:
                     sa.select(resource_slots)
                     .where(
                         resource_slots.c.workspace_id == self._workspace_id,
-                        resource_slots.c.scope == self._slot_scope,
-                        resource_slots.c.resource_key == str(self._workspace_id),
+                        resource_slots.c.scope == key.scope,
+                        resource_slots.c.resource_key == key.key,
                     )
                     .with_for_update()
                 )
             ).first()
-        if row is None or row.reserved >= row.capacity:
+        return row
+
+    async def _reserve_keys(self, session: AsyncSession, keys: Sequence[ResourceKey]):
+        rows = []
+        for key in sorted(set(keys)):
+            row = await self._lock_or_create_slot(session, key)
+            if row is None:
+                return None
+            rows.append(row)
+        if any(row.reserved >= row.capacity for row in rows):
             return None
-        await session.execute(
-            sa.update(resource_slots).where(resource_slots.c.id == row.id).values(reserved=row.reserved + 1)
-        )
-        return row.id
+        for row in rows:
+            await session.execute(
+                sa.update(resource_slots).where(resource_slots.c.id == row.id).values(reserved=row.reserved + 1)
+            )
+        return rows
 
     async def _finish_lease(self, lease_id: UUID, *, job_state: str, quarantine_reason: str | None) -> None:
         try:
@@ -273,8 +311,11 @@ class JobQueue:
                         .with_for_update()
                     )
                 ).first()
-                if lease is None:
+                if lease is None or lease.released_at is not None:
                     return
+                job = (
+                    await session.execute(sa.select(jobs).where(jobs.c.id == lease.job_id).with_for_update())
+                ).first()
                 await session.execute(
                     sa.update(worker_leases)
                     .where(worker_leases.c.id == lease_id, worker_leases.c.released_at.is_(None))
@@ -297,22 +338,29 @@ class JobQueue:
                             )
                         )
                     )
-                slot = (
-                    await session.execute(
-                        sa.select(resource_slots)
-                        .where(
-                            resource_slots.c.workspace_id == self._workspace_id,
-                            resource_slots.c.scope == self._slot_scope,
-                            resource_slots.c.resource_key == str(self._workspace_id),
+                if job is None:
+                    keys = default_resource_keys(self._workspace_id)
+                else:
+                    keys = parse_resource_keys(
+                        (job.payload or {}).get("resource_keys"), fallback_workspace_id=self._workspace_id
+                    )
+                for key in sorted(set(keys)):
+                    slot = (
+                        await session.execute(
+                            sa.select(resource_slots)
+                            .where(
+                                resource_slots.c.workspace_id == self._workspace_id,
+                                resource_slots.c.scope == key.scope,
+                                resource_slots.c.resource_key == key.key,
+                            )
+                            .with_for_update()
                         )
-                        .with_for_update()
-                    )
-                ).first()
-                if slot is not None and slot.reserved > 0:
-                    await session.execute(
-                        sa.update(resource_slots)
-                        .where(resource_slots.c.id == slot.id)
-                        .values(reserved=slot.reserved - 1)
-                    )
+                    ).first()
+                    if slot is not None and slot.reserved > 0:
+                        await session.execute(
+                            sa.update(resource_slots)
+                            .where(resource_slots.c.id == slot.id)
+                            .values(reserved=slot.reserved - 1)
+                        )
         except SQLAlchemyError as exc:
             raise QueueUnavailable(str(exc)) from exc

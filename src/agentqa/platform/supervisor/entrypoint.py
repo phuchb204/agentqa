@@ -18,7 +18,7 @@ from agentqa.contracts.actions import ActionCommand, ActionReceipt
 from agentqa.contracts.values import SensitiveValue
 from agentqa.platform.fixtures import FixtureRegistry, TaskboardFixture, synthetic_password
 from agentqa.platform.runs.composition import AgentModels
-from agentqa.platform.runs.coordinator import BridgedRunEventRecorder, RunCoordinator
+from agentqa.platform.runs.coordinator import BridgedFixtureRuns, BridgedRunEventRecorder, RunCoordinator
 from agentqa.platform.security.egress import AllowedEndpoint, EgressPolicy, system_resolver
 from agentqa.platform.security.proxy import EgressProxy
 from agentqa.platform.security.redaction import RedactionService
@@ -193,6 +193,7 @@ async def run(args: argparse.Namespace) -> None:
             from agentqa.models.fakes import FakeGo, FakeJev
 
             agent_models = AgentModels(generative=FakeGo(), decision=FakeJev())
+    fixture_runs = BridgedFixtureRuns(bridge, args.dsn, fixture_registry)
     coordinator = RunCoordinator(
         runtime=runtime,
         contexts=session.contexts,
@@ -203,6 +204,7 @@ async def run(args: argparse.Namespace) -> None:
         secret_namespace_hook=broker.set_namespace,
         agent_models=agent_models,
         taint=taint,
+        fixture_runs=fixture_runs,
     )
     frame_state = {"seq": 0}
 

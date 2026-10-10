@@ -264,7 +264,7 @@ class CredentialService:
             .scalars()
             .all()
         )
-        return await self._write_envelope(
+        record = await self._write_envelope(
             session,
             workspace_id=workspace_id,
             credential_ref=credential_ref,
@@ -272,6 +272,81 @@ class CredentialService:
             plaintext=plaintext,
             actor=actor,
             rotated_from=previous[0] if previous else None,
+        )
+        if previous:
+            await session.execute(
+                sa.update(tables.credential_records)
+                .where(
+                    tables.credential_records.c.workspace_id == workspace_id,
+                    tables.credential_records.c.id.in_(list(previous)),
+                )
+                .values(status="rotated")
+            )
+            await self._revoke_grants(
+                session, workspace_id=workspace_id, credential_ids=list(previous), reason="credential_rotated"
+            )
+            await self._audit(
+                session,
+                workspace_id=workspace_id,
+                actor=actor,
+                action="credential.retire_rotated_versions",
+                subject_id=str(record.credential_id),
+                reason=None,
+                metadata={"retired_versions": [str(item) for item in previous], "new_version": version},
+            )
+        return record
+
+    async def revoke_reference(
+        self, session: AsyncSession, *, workspace_id: UUID, credential_ref: str, reason: str, actor: str
+    ) -> int:
+        active_ids = (
+            (
+                await session.execute(
+                    sa.select(tables.credential_records.c.id).where(
+                        tables.credential_records.c.workspace_id == workspace_id,
+                        tables.credential_records.c.credential_ref == credential_ref,
+                        tables.credential_records.c.status == "active",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not active_ids:
+            raise SecurityError(ErrorCode.NOT_FOUND, "Không tìm thấy credential reference đang active")
+        await session.execute(
+            sa.update(tables.credential_records)
+            .where(
+                tables.credential_records.c.workspace_id == workspace_id,
+                tables.credential_records.c.id.in_(list(active_ids)),
+            )
+            .values(status="revoked", revoked_at=datetime.now(UTC), revoke_reason=reason)
+        )
+        await self._revoke_grants(session, workspace_id=workspace_id, credential_ids=list(active_ids), reason=reason)
+        await self._audit(
+            session,
+            workspace_id=workspace_id,
+            actor=actor,
+            action="credential.revoke_reference",
+            subject_id=credential_ref,
+            reason=reason,
+            metadata={"revoked_versions": [str(item) for item in active_ids]},
+        )
+        return len(active_ids)
+
+    async def _revoke_grants(
+        self, session: AsyncSession, *, workspace_id: UUID, credential_ids: list[UUID], reason: str
+    ) -> None:
+        if not credential_ids:
+            return
+        await session.execute(
+            sa.update(tables.credential_grants)
+            .where(
+                tables.credential_grants.c.workspace_id == workspace_id,
+                tables.credential_grants.c.credential_id.in_(credential_ids),
+                tables.credential_grants.c.revoked_at.is_(None),
+            )
+            .values(revoked_at=datetime.now(UTC), revoke_reason=reason)
         )
 
     async def _write_envelope(
@@ -349,6 +424,7 @@ class CredentialService:
             reason=reason,
             actor=actor,
         )
+        await self._revoke_grants(session, workspace_id=workspace_id, credential_ids=[credential_id], reason=reason)
 
     async def soft_delete(self, session: AsyncSession, *, workspace_id: UUID, credential_id: UUID, actor: str) -> None:
         await self._set_status(

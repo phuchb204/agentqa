@@ -22,7 +22,13 @@ import type {
   RunComparison,
   RunDetail,
   RunList,
+  CredentialReferenceSummary,
+  CredentialRevokeInfo,
+  CredentialVersionInfo,
   RunState,
+  ScheduleOccurrence,
+  ScheduleRevisionSummary,
+  ScheduleSummary,
   SessionInfo,
   SourceDetail,
   SourceRevision,
@@ -118,6 +124,35 @@ export interface ApiClient {
     content: unknown,
   ): Promise<Promotion>;
   listFixtures(workspaceId: string): Promise<Entity[]>;
+  listSchedules(workspaceId: string): Promise<ScheduleSummary[]>;
+  createSchedule(workspaceId: string, logicalKey: string): Promise<ScheduleSummary>;
+  addScheduleRevision(
+    workspaceId: string,
+    scheduleId: string,
+    content: unknown,
+  ): Promise<ScheduleRevisionSummary>;
+  setScheduleEnabled(
+    workspaceId: string,
+    scheduleId: string,
+    enabled: boolean,
+  ): Promise<ScheduleSummary>;
+  listScheduleOccurrences(workspaceId: string, scheduleId: string): Promise<ScheduleOccurrence[]>;
+  listCredentialReferences(workspaceId: string): Promise<CredentialReferenceSummary[]>;
+  createCredentialReference(
+    workspaceId: string,
+    credentialRef: string,
+    envVarName: string,
+  ): Promise<CredentialVersionInfo>;
+  rotateCredentialReference(
+    workspaceId: string,
+    credentialRef: string,
+    value: string,
+  ): Promise<CredentialVersionInfo>;
+  revokeCredentialReference(
+    workspaceId: string,
+    credentialRef: string,
+    reason: string,
+  ): Promise<CredentialRevokeInfo>;
   listApplications(workspaceId: string): Promise<Entity[]>;
   listEnvironmentRevisions(workspaceId: string, applicationId: string): Promise<Revision[]>;
   listRuns(
@@ -530,6 +565,83 @@ export function createApiClient(
         params: { path: { workspace_id: workspaceId, kind: "fixture" } },
       });
       return unwrap<Entity[]>(result);
+    },
+    async listSchedules(workspaceId) {
+      const result = await client.GET("/api/v1/workspaces/{workspace_id}/schedules", {
+        params: { path: { workspace_id: workspaceId } },
+      });
+      const body = await unwrap<{ items: ScheduleSummary[] }>(result);
+      return body.items;
+    },
+    async createSchedule(workspaceId, logicalKey) {
+      const result = await client.POST("/api/v1/workspaces/{workspace_id}/schedules", {
+        params: { path: { workspace_id: workspaceId } },
+        body: { logical_key: logicalKey },
+      });
+      return unwrap<ScheduleSummary>(result);
+    },
+    async addScheduleRevision(workspaceId, scheduleId, content) {
+      const result = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/schedules/{schedule_id}/revisions",
+        {
+          params: { path: { workspace_id: workspaceId, schedule_id: scheduleId } },
+          body: { content: content as Record<string, unknown> },
+        },
+      );
+      return unwrap<ScheduleRevisionSummary>(result);
+    },
+    async setScheduleEnabled(workspaceId, scheduleId, enabled) {
+      const result = await client.POST(
+        enabled
+          ? "/api/v1/workspaces/{workspace_id}/schedules/{schedule_id}/enable"
+          : "/api/v1/workspaces/{workspace_id}/schedules/{schedule_id}/disable",
+        {
+          params: { path: { workspace_id: workspaceId, schedule_id: scheduleId } },
+        },
+      );
+      return unwrap<ScheduleSummary>(result);
+    },
+    async listScheduleOccurrences(workspaceId, scheduleId) {
+      const result = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/schedules/{schedule_id}/occurrences",
+        { params: { path: { workspace_id: workspaceId, schedule_id: scheduleId } } },
+      );
+      const body = await unwrap<{ items: ScheduleOccurrence[] }>(result);
+      return body.items;
+    },
+    async listCredentialReferences(workspaceId) {
+      const result = await client.GET("/api/v1/workspaces/{workspace_id}/credential-references", {
+        params: { path: { workspace_id: workspaceId } },
+      });
+      const body = await unwrap<{ items: CredentialReferenceSummary[] }>(result);
+      return body.items;
+    },
+    async createCredentialReference(workspaceId, credentialRef, envVarName) {
+      const result = await client.POST("/api/v1/workspaces/{workspace_id}/credential-references", {
+        params: { path: { workspace_id: workspaceId } },
+        body: { credential_ref: credentialRef, env_var_name: envVarName },
+      });
+      return unwrap<CredentialVersionInfo>(result);
+    },
+    async rotateCredentialReference(workspaceId, credentialRef, value) {
+      const result = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/credential-references/{credential_ref}/rotate",
+        {
+          params: { path: { workspace_id: workspaceId, credential_ref: credentialRef } },
+          body: { value },
+        },
+      );
+      return unwrap<CredentialVersionInfo>(result);
+    },
+    async revokeCredentialReference(workspaceId, credentialRef, reason) {
+      const result = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/credential-references/{credential_ref}/revoke",
+        {
+          params: { path: { workspace_id: workspaceId, credential_ref: credentialRef } },
+          body: { reason },
+        },
+      );
+      return unwrap<CredentialRevokeInfo>(result);
     },
     async listApplications(workspaceId) {
       const result = await client.GET("/api/v1/workspaces/{workspace_id}/applications", {

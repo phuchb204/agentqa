@@ -176,6 +176,52 @@ export interface BindResult {
   facts: string[];
 }
 
+export interface CredentialReferenceSummary {
+  credential_ref: string;
+  version: number;
+  kind: string;
+  status: string;
+  algorithm: string | null;
+  rotated_from: string | null;
+}
+
+export interface CredentialVersionInfo {
+  credential_ref: string;
+  version: number;
+  status: string;
+}
+
+export interface CredentialRevokeInfo {
+  credential_ref: string;
+  revoked_versions: number;
+}
+
+export interface ScheduleRevisionSummary {
+  revision_id: string;
+  revision_no: number;
+  content: Record<string, unknown>;
+}
+
+export interface ScheduleSummary {
+  schedule_id: string;
+  logical_key: string;
+  enabled: boolean;
+  latest_revision: ScheduleRevisionSummary | null;
+}
+
+export interface ScheduleOccurrence {
+  occurrence_id: string;
+  schedule_id: string;
+  schedule_revision_id: string;
+  occurrence_key: string;
+  local_wall_time: string;
+  scheduled_at: string | null;
+  fold: number;
+  state: string;
+  reason: string | null;
+  run_id: string | null;
+}
+
 export interface FieldError {
   path: (string | number)[];
   code: string;

@@ -13,11 +13,13 @@ from agentqa.platform.api.controls import router as controls_router
 from agentqa.platform.api.error_models import ApiError, ErrorResponse, FieldErrorModel, HealthResponse
 from agentqa.platform.api.events import router as events_router
 from agentqa.platform.api.exploration import router as exploration_router
+from agentqa.platform.api.health import router as health_router
 from agentqa.platform.api.reports import router as reports_router
 from agentqa.platform.api.requirements import router as requirements_router
 from agentqa.platform.api.revisions import router as revisions_router
 from agentqa.platform.api.runs import router as runs_router
 from agentqa.platform.api.runtime import PlatformRuntime
+from agentqa.platform.api.schedules import router as schedules_router
 from agentqa.platform.api.schemas import (
     OPENAPI_PATH,
     PUBLIC_SCHEMAS,
@@ -26,6 +28,7 @@ from agentqa.platform.api.schemas import (
     schema_document,
     schema_json_text,
 )
+from agentqa.platform.api.settings import router as settings_router
 from agentqa.platform.api.sources import router as sources_router
 from agentqa.platform.api.streams import router as streams_router
 from agentqa.platform.api.webapp import SpaStaticFiles, web_dist_directory
@@ -112,8 +115,11 @@ def _get_schema(name: str, version: str) -> dict[str, object]:
 
 
 def create_application(runtime: PlatformRuntime | None = None) -> FastAPI:
+    from agentqa.platform.telemetry import CorrelationMiddleware
+
     app = FastAPI(title="AgentQA API", version=API_VERSION, openapi_url="/api/v1/openapi.json")
     app.state.runtime = runtime
+    app.add_middleware(CorrelationMiddleware)
     _install_handlers(app)
     app.include_router(auth_router)
     app.include_router(workspaces_router)
@@ -127,8 +133,11 @@ def create_application(runtime: PlatformRuntime | None = None) -> FastAPI:
     app.include_router(bundles_router)
     app.include_router(artifacts_router)
     app.include_router(streams_router)
-    app.include_router(revisions_router)
     app.include_router(reports_router)
+    app.include_router(schedules_router)
+    app.include_router(settings_router)
+    app.include_router(health_router)
+    app.include_router(revisions_router)
     app.add_api_route("/health/live", _health_live, methods=["GET"], response_model=HealthResponse)
     app.add_api_route("/api/v1/schemas", _list_schemas, methods=["GET"], response_model=None)
     app.add_api_route(

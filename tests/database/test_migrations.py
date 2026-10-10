@@ -12,7 +12,7 @@ from tests.support.postgres import fetch_scalar
 
 pytestmark = pytest.mark.asyncio
 
-HEAD_REVISION = "0007_cache_diagnostics_reports"
+HEAD_REVISION = "0012_outbox_webhooks"
 TABLE_COUNT_SQL = "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'"
 VERSION_SQL = "SELECT version_num FROM alembic_version"
 

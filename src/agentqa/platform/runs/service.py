@@ -17,10 +17,12 @@ from agentqa.contracts.observation import Modality
 from agentqa.contracts.runs import ControlAction, RunSnapshot
 from agentqa.platform.events.service import EventService
 from agentqa.platform.identity.models import IdentityError
+from agentqa.platform.queue.admission import build_resource_keys, provider_refs_for_policy
 from agentqa.platform.revisions.service import validate_content
 from agentqa.platform.storage import tables
 from agentqa.platform.storage.database import create_session_factory
 from agentqa.platform.storage.scope import set_scope
+from agentqa.platform.suites.materialize import MaterializedExecution, materialize_suite
 
 SUBMIT_OPERATION = "run.submit"
 DRAFT_SUBMIT_OPERATION = "run.submit_draft"
@@ -48,7 +50,8 @@ class SubmitRequest:
     principal_id: UUID
     actor: str
     idempotency_key: str
-    case_revision_ids: tuple[UUID, ...]
+    case_revision_ids: tuple[UUID, ...] = ()
+    suite_revision_id: UUID | None = None
     environment_revision_id: UUID | None = None
     policy: str = "default"
     observation_mode: Modality = Modality.SEMANTIC
@@ -60,6 +63,7 @@ class SubmitRequest:
     def portable(self) -> dict:
         return {
             "case_revision_ids": [str(item) for item in self.case_revision_ids],
+            "suite_revision_id": str(self.suite_revision_id) if self.suite_revision_id else None,
             "environment_revision_id": str(self.environment_revision_id) if self.environment_revision_id else None,
             "policy": self.policy,
             "observation_mode": self.observation_mode.value,
@@ -195,14 +199,12 @@ class RunService:
                     status=stored["status"],
                 )
 
-            revisions, facts = await self._resolve_case_revisions(session, request)
-            capabilities = sorted({cap for revision in revisions for cap in revision.required_capabilities})
-            unsupported = sorted(set(capabilities) - request.provided_capabilities)
-            facts.extend(f"capability_unavailable:{cap}" for cap in unsupported)
+            facts: list[str] = []
+            environment_content: dict = {}
             if request.environment_revision_id is not None:
                 environment = (
                     await session.execute(
-                        sa.select(tables.environment_revisions.c.id).where(
+                        sa.select(tables.environment_revisions.c.id, tables.environment_revisions.c.content).where(
                             tables.environment_revisions.c.workspace_id == request.workspace_id,
                             tables.environment_revisions.c.id == request.environment_revision_id,
                             tables.environment_revisions.c.lifecycle == "ready",
@@ -211,12 +213,79 @@ class RunService:
                 ).one_or_none()
                 if environment is None:
                     facts.append(f"unknown_environment_revision:{request.environment_revision_id}")
+                else:
+                    environment_content = dict(environment.content or {})
+
+            revisions: list[CaseRevisionInfo] = []
+            suite_plan: list[MaterializedExecution] = []
+            materialization = None
+            fixture_refs: list[str] = []
+            resolved_revision_ids: dict[str, UUID] = {}
+            content_digests: list[str] = []
+            if request.suite_revision_id is not None:
+                materialization = await materialize_suite(
+                    session,
+                    workspace_id=request.workspace_id,
+                    suite_revision_id=request.suite_revision_id,
+                )
+                facts.extend(materialization.facts)
+                suite_plan = materialization.executions
+                fixture_refs = list(materialization.fixture_refs)
+                revision_ids = sorted(
+                    {execution.case_revision_id for execution in suite_plan if execution.case_revision_id is not None},
+                    key=str,
+                )
+                if revision_ids:
+                    revision_rows = (
+                        await session.execute(
+                            sa.select(
+                                tables.case_revisions.c.id,
+                                tables.case_revisions.c.case_id,
+                                tables.case_revisions.c.content,
+                                tables.case_revisions.c.content_digest,
+                            ).where(
+                                tables.case_revisions.c.workspace_id == request.workspace_id,
+                                tables.case_revisions.c.id.in_(revision_ids),
+                            )
+                        )
+                    ).all()
+                    revisions = [
+                        CaseRevisionInfo(
+                            revision_id=row.id,
+                            case_id=row.case_id,
+                            logical_key="",
+                            content_digest=row.content_digest,
+                            required_capabilities=tuple((row.content or {}).get("required_capabilities", [])),
+                        )
+                        for row in revision_rows
+                    ]
+                for execution in suite_plan:
+                    if execution.case_id is not None and execution.case_revision_id is not None:
+                        resolved_revision_ids[str(execution.case_id)] = execution.case_revision_id
+                content_digests = [revision.content_digest for revision in revisions]
+                content_digests.append(materialization.suite_content_digest)
+                if materialization.dataset_content_digest:
+                    content_digests.append(materialization.dataset_content_digest)
+            else:
+                revisions, case_facts = await self._resolve_case_revisions(session, request)
+                facts.extend(case_facts)
+                resolved_revision_ids = {str(revision.case_id): revision.revision_id for revision in revisions}
+                content_digests = [revision.content_digest for revision in revisions]
+                fixture_ref = environment_content.get("fixture_ref")
+                if fixture_ref:
+                    fixture_refs = [str(fixture_ref)]
+            capabilities = sorted({cap for revision in revisions for cap in revision.required_capabilities})
+            unsupported = sorted(set(capabilities) - request.provided_capabilities)
+            facts.extend(f"capability_unavailable:{cap}" for cap in unsupported)
 
             snapshot = RunSnapshot(
                 snapshot_version=1,
-                resolved_revision_ids={str(revision.case_id): revision.revision_id for revision in revisions},
-                content_digests=[revision.content_digest for revision in revisions],
+                resolved_revision_ids=resolved_revision_ids,
+                content_digests=content_digests,
                 environment_revision=request.environment_revision_id,
+                suite_revision=materialization.suite_revision_id if materialization is not None else None,
+                dataset_revision=materialization.dataset_revision_id if materialization is not None else None,
+                fixture_refs=fixture_refs,
                 policy=request.policy,
                 observation_mode=request.observation_mode,
                 budgets=dict(request.budgets),
@@ -249,30 +318,71 @@ class RunService:
                 .where(tables.runs.c.id == run_id)
                 .values(snapshot_id=None, updated_at=datetime.now(UTC))
             )
+            resource_keys = build_resource_keys(
+                workspace_id=request.workspace_id,
+                environment_revision_id=request.environment_revision_id,
+                environment_content=environment_content,
+                provider_refs=provider_refs_for_policy(request.policy),
+            )
+            resource_payload = [key.as_dict() for key in resource_keys]
             planned = 0
             if not blocked:
-                for revision in revisions:
-                    execution_id = uuid4()
-                    await session.execute(
-                        sa.insert(tables.executions).values(
-                            id=execution_id,
-                            workspace_id=request.workspace_id,
-                            run_id=run_id,
-                            case_revision_id=revision.revision_id,
-                            logical_key=revision.logical_key,
-                            status="queued",
+                if materialization is not None:
+                    for execution in suite_plan:
+                        execution_id = uuid4()
+                        await session.execute(
+                            sa.insert(tables.executions).values(
+                                id=execution_id,
+                                workspace_id=request.workspace_id,
+                                run_id=run_id,
+                                case_revision_id=execution.case_revision_id,
+                                logical_key=execution.case_logical_key,
+                                execution_key=execution.execution_key,
+                                dataset_row_index=execution.dataset_row_index,
+                                parameters=execution.parameters,
+                                status="queued",
+                            )
                         )
-                    )
-                    await session.execute(
-                        sa.insert(tables.jobs).values(
-                            workspace_id=request.workspace_id,
-                            run_id=run_id,
-                            execution_id=execution_id,
-                            kind="browser_run",
-                            state="queued",
+                        await session.execute(
+                            sa.insert(tables.jobs).values(
+                                workspace_id=request.workspace_id,
+                                run_id=run_id,
+                                execution_id=execution_id,
+                                kind="browser_run",
+                                state="queued",
+                                payload={
+                                    "resource_keys": resource_payload,
+                                    "fail_fast": materialization.fail_fast,
+                                    "suite_revision_id": str(materialization.suite_revision_id),
+                                    "execution_key": execution.execution_key,
+                                },
+                            )
                         )
-                    )
-                    planned += 1
+                        planned += 1
+                else:
+                    for revision in revisions:
+                        execution_id = uuid4()
+                        await session.execute(
+                            sa.insert(tables.executions).values(
+                                id=execution_id,
+                                workspace_id=request.workspace_id,
+                                run_id=run_id,
+                                case_revision_id=revision.revision_id,
+                                logical_key=revision.logical_key,
+                                status="queued",
+                            )
+                        )
+                        await session.execute(
+                            sa.insert(tables.jobs).values(
+                                workspace_id=request.workspace_id,
+                                run_id=run_id,
+                                execution_id=execution_id,
+                                kind="browser_run",
+                                state="queued",
+                                payload={"resource_keys": resource_payload},
+                            )
+                        )
+                        planned += 1
             await self._events.append(
                 session,
                 workspace_id=request.workspace_id,
@@ -281,6 +391,23 @@ class RunService:
                 actor=request.actor,
                 payload={"status": "queued", "blocked": blocked},
             )
+            if materialization is not None:
+                await self._events.append(
+                    session,
+                    workspace_id=request.workspace_id,
+                    run_id=run_id,
+                    event_type="suite.materialized",
+                    actor=request.actor,
+                    payload={
+                        "suite_revision_id": str(materialization.suite_revision_id),
+                        "dataset_revision_id": (
+                            str(materialization.dataset_revision_id) if materialization.dataset_revision_id else None
+                        ),
+                        "execution_keys": [execution.execution_key for execution in suite_plan],
+                        "fail_fast": materialization.fail_fast,
+                        "planned_executions": planned,
+                    },
+                )
             outcome = SubmitOutcome(
                 run_id=run_id,
                 snapshot_digest=snapshot_digest,

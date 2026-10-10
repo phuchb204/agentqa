@@ -124,6 +124,40 @@ async def _build_recorder(dsn: str) -> RunEventRecorder:
     return RunEventRecorder(create_engine(dsn))
 
 
+class BridgedFixtureRuns:
+    def __init__(self, bridge: Any, dsn: str, registry: Any) -> None:
+        self._bridge = bridge
+        self._dsn = dsn
+        self._registry = registry
+        self._inner: Any = None
+
+    async def _ensure(self) -> Any:
+        if self._inner is None:
+            dsn = self._dsn
+            registry = self._registry
+
+            async def build() -> Any:
+                from agentqa.platform.fixtures.runs import FixtureRunService
+                from agentqa.platform.storage.database import create_engine
+
+                return FixtureRunService(create_engine(dsn), registry=registry)
+
+            self._inner = await self._bridge.call_factory(build)
+        return self._inner
+
+    async def record_lifecycle(self, **kwargs: Any) -> Any:
+        inner = await self._ensure()
+        return await self._bridge.call_factory(lambda: inner.record_lifecycle(**kwargs))
+
+    async def enqueue_cleanup(self, **kwargs: Any) -> Any:
+        inner = await self._ensure()
+        return await self._bridge.call_factory(lambda: inner.enqueue_cleanup(**kwargs))
+
+    async def process_due(self, **kwargs: Any) -> Any:
+        inner = await self._ensure()
+        return await self._bridge.call_factory(lambda: inner.process_due(**kwargs))
+
+
 class RunEventRecorder:
     def __init__(self, engine) -> None:
         from agentqa.platform.events.service import EventService
@@ -470,6 +504,7 @@ class RunCoordinator:
         secret_namespace_hook: Callable[[str], None] | None = None,
         agent_models: AgentModels | None = None,
         taint: Any = None,
+        fixture_runs: Any = None,
     ) -> None:
         self.runtime = runtime
         self.contexts = contexts
@@ -477,6 +512,7 @@ class RunCoordinator:
         self.scene_provider = scene_provider
         self.fixtures = fixtures
         self.recorder = recorder
+        self.fixture_runs = fixture_runs
         self.guard = guard or TargetGuard()
         self._secret_namespace_hook = secret_namespace_hook
         self._active_spec: ExecutionSpec | None = None
@@ -568,6 +604,15 @@ class RunCoordinator:
                 [],
             )
         fixture_receipt = self.fixtures.prepare(spec.fixture_ref, spec.namespace)
+        if self.fixture_runs is not None:
+            await self.fixture_runs.record_lifecycle(
+                workspace_id=spec.workspace_id,
+                principal_id=spec.principal_id,
+                run_id=spec.run_id,
+                execution_id=spec.execution_id,
+                attempt_id=spec.attempt_id,
+                receipt=fixture_receipt,
+            )
         if not fixture_receipt.ok:
             completion = CompletionOutcome(complete=False, proof_valid=False, reasons=("fixture_failed",))
             return self._terminal(
@@ -677,11 +722,33 @@ class RunCoordinator:
             payload={"probe": outcome_probe or {}},
         )
         cleanup_failed = False
-        try:
-            cleanup = self.fixtures.cleanup(spec.fixture_ref, spec.namespace)
-            cleanup_failed = not cleanup.ok
-        except Exception:
-            cleanup_failed = True
+        if self.fixture_runs is not None:
+            record_id = await self.fixture_runs.enqueue_cleanup(
+                workspace_id=spec.workspace_id,
+                principal_id=spec.principal_id,
+                run_id=spec.run_id,
+                execution_id=spec.execution_id,
+                attempt_id=spec.attempt_id,
+                fixture_ref=spec.fixture_ref,
+                namespace=spec.namespace,
+            )
+            try:
+                results = await self.fixture_runs.process_due(
+                    workspace_id=spec.workspace_id,
+                    principal_id=spec.principal_id,
+                    worker_id=f"coordinator:{spec.execution_id}",
+                    limit=1,
+                )
+            except Exception:
+                results = []
+            state = next((item["state"] for item in results if item["record_id"] == record_id), None)
+            cleanup_failed = state != "succeeded"
+        else:
+            try:
+                cleanup = self.fixtures.cleanup(spec.fixture_ref, spec.namespace)
+                cleanup_failed = not cleanup.ok
+            except Exception:
+                cleanup_failed = True
         with contextlib.suppress(Exception):
             await self.contexts.close(context_key)
         with contextlib.suppress(Exception):

@@ -154,7 +154,7 @@ class RunWorker:
             target_base_url=str(environment_content["target_base_url"]),
             fixture_ref=str(environment_content["fixture_ref"]),
             namespace=str(environment_content["namespace"]),
-            parameters=dict(environment_content.get("parameters", {})),
+            parameters={**dict(environment_content.get("parameters", {})), **dict(execution.parameters or {})},
             gate_profile=str(snapshot.content.get("gate_profile", "strict")),
             fence_epoch=int(attempt.fence_epoch) if attempt is not None else 1,
             policy=str(snapshot.content.get("policy", "replay")),
@@ -164,6 +164,47 @@ class RunWorker:
             case_id=revision.case_id if revision is not None else None,
             case_revision_id=execution.case_revision_id,
         )
+
+    async def _skip_pending_executions(self, session, spec: ExecutionSpec) -> list[tuple[UUID, str]]:
+        job_payload = (
+            await session.execute(
+                sa.select(tables.jobs.c.payload)
+                .where(
+                    tables.jobs.c.workspace_id == spec.workspace_id,
+                    tables.jobs.c.run_id == spec.run_id,
+                    tables.jobs.c.execution_id.is_not(None),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if not dict(job_payload or {}).get("fail_fast"):
+            return []
+        pending = (
+            await session.execute(
+                sa.select(tables.executions.c.id, tables.executions.c.logical_key)
+                .where(
+                    tables.executions.c.run_id == spec.run_id,
+                    tables.executions.c.status == ExecutionStatus.QUEUED.value,
+                    tables.executions.c.id != spec.execution_id,
+                )
+                .order_by(tables.executions.c.created_at, tables.executions.c.id)
+            )
+        ).all()
+        for row in pending:
+            await session.execute(
+                sa.update(tables.executions)
+                .where(tables.executions.c.id == row.id)
+                .values(status=ExecutionStatus.SKIPPED.value, updated_at=datetime.now(UTC))
+            )
+            await session.execute(
+                sa.update(tables.jobs)
+                .where(
+                    tables.jobs.c.execution_id == row.id,
+                    tables.jobs.c.state == "queued",
+                )
+                .values(state="cancelled", updated_at=datetime.now(UTC))
+            )
+        return [(row.id, row.logical_key) for row in pending]
 
     async def _pending_control(self, workspace_id: UUID, run_id: UUID) -> UUID | None:
         async with self._factory() as session, session.begin():
@@ -188,7 +229,12 @@ class RunWorker:
             await session.execute(
                 sa.update(tables.executions)
                 .where(tables.executions.c.id == spec.execution_id)
-                .values(status=outcome.status, verdict=outcome.verdict, updated_at=datetime.now(UTC))
+                .values(
+                    status=outcome.status,
+                    verdict=outcome.verdict,
+                    gate=outcome.gate,
+                    updated_at=datetime.now(UTC),
+                )
             )
             for result in outcome.assertion_results:
                 await session.execute(
@@ -251,9 +297,12 @@ class RunWorker:
                         recorded_at=record.recorded_at,
                     )
                 )
+            skipped: list[tuple[UUID, str]] = []
+            if outcome.status == ExecutionStatus.FAILED.value:
+                skipped = await self._skip_pending_executions(session, spec)
             rows = (
                 await session.execute(
-                    sa.select(tables.executions.c.status, tables.executions.c.verdict).where(
+                    sa.select(tables.executions.c.status, tables.executions.c.verdict, tables.executions.c.gate).where(
                         tables.executions.c.run_id == spec.run_id
                     )
                 )
@@ -267,12 +316,22 @@ class RunWorker:
                     .values(
                         status=_compose_run_status(statuses, verdicts),
                         verdict=_compose_run_verdict(verdicts),
-                        gate=outcome.gate if len(rows) == 1 else None,
+                        gate=_compose_run_gate([row.gate for row in rows]),
                         reasons=outcome.reasons,
                         finalized_at=datetime.now(UTC),
                         updated_at=datetime.now(UTC),
                     )
                 )
+        for execution_id, logical_key in skipped:
+            await self.recorder.record(
+                workspace_id=spec.workspace_id,
+                principal_id=spec.principal_id,
+                run_id=spec.run_id,
+                execution_id=execution_id,
+                event_type="execution.skipped",
+                actor=spec.actor,
+                payload={"reason": "fail_fast", "after_execution": str(spec.execution_id), "logical_key": logical_key},
+            )
         await self.recorder.record(
             workspace_id=spec.workspace_id,
             principal_id=spec.principal_id,
@@ -300,3 +359,14 @@ def _compose_run_verdict(verdicts: list[str | None]) -> str:
     if all(verdict == Verdict.PASSED.value for verdict in verdicts):
         return Verdict.PASSED.value
     return Verdict.INCONCLUSIVE.value
+
+
+def _compose_run_gate(gates: list[str | None]) -> str | None:
+    present = [gate for gate in gates if gate]
+    if not present:
+        return None
+    if "refused" in present:
+        return "refused"
+    if "error" in present:
+        return "error"
+    return "passed"

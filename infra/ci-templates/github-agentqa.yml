@@ -1,0 +1,34 @@
+name: agentqa-regression
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.10.7"
+
+      - name: Submit pinned suite revision qua AgentQA CLI
+        env:
+          AGENTQA_BASE_URL: ${{ vars.AGENTQA_BASE_URL }}
+          AGENTQA_TOKEN: ${{ secrets.AGENTQA_TOKEN }}
+        run: |
+          uvx --from agentqa agentqa --json suite submit \
+            --workspace "${{ vars.AGENTQA_WORKSPACE_ID }}" \
+            --suite-revision "${{ vars.AGENTQA_SUITE_REVISION }}" \
+            --gate-profile strict > agentqa-result.json
+          echo "cli_exit=$?" >> "$GITHUB_ENV"
+
+      - name: Giữ kết quả JSON cho người đọc (không tự gửi issue/email)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentqa-result
+          path: agentqa-result.json
+          if-no-files-found: warn

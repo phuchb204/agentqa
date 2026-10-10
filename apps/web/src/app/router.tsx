@@ -15,6 +15,7 @@ import { ComparePage } from "../features/compare/ComparePage";
 import { LiveRunPage, RunsListPage } from "../features/live/LiveRunPage";
 import { RequirementsPage } from "../features/requirements/RequirementsPage";
 import { RunDetailPage } from "../features/runs/RunDetailPage";
+import { SettingsPage } from "../features/settings/SettingsPage";
 import { SuitesPage } from "../features/suites/SuitesPage";
 import { OverviewPage } from "../features/workspace/OverviewPage";
 import { Shell } from "./shell/Shell";
@@ -112,6 +113,24 @@ const suiteDetailRoute = createRoute({
   },
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/w/$workspaceId/settings/$section",
+  component: function SettingsRoute() {
+    const { workspaceId, section } = settingsRoute.useParams();
+    return <SettingsPage workspaceId={workspaceId} section={section} />;
+  },
+});
+
+const settingsIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/w/$workspaceId/settings",
+  component: function SettingsIndexRoute() {
+    const { workspaceId } = settingsIndexRoute.useParams();
+    return <SettingsPage workspaceId={workspaceId} section="references" />;
+  },
+});
+
 const runsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/w/$workspaceId/runs",
@@ -165,6 +184,8 @@ export const routeTree = rootRoute.addChildren([
   runDetailRoute,
   liveRunRoute,
   compareRoute,
+  settingsRoute,
+  settingsIndexRoute,
 ]);
 
 export function createAppRouter(context: RouterContext) {

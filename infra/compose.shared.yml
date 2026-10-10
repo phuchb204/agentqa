@@ -1,0 +1,126 @@
+name: agentqa-shared
+
+# Shared profile: API yêu cầu AGENTQA_SHARED_ORIGINS (allowlist HTTPS) và phải được
+# đặt sau reverse proxy TLS. Cookie session chỉ gửi khi Secure; bootstrap nonce bị chặn.
+# Postgres không publish port; chỉ control network nội bộ.
+
+x-db-password: &db-password ${AGENTQA_DB_PASSWORD:?set AGENTQA_DB_PASSWORD}
+x-dsn-base: &dsn-base postgresql+psycopg
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: agentqa_bootstrap
+      POSTGRES_PASSWORD: *db-password
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentqa_bootstrap -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - control
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    command:
+      - sh
+      - -c
+      - >-
+        python -m agentqa.platform.storage.migrate bootstrap
+        --dsn "$${DB_DSN_BASE}://agentqa_bootstrap:$${DB_PASSWORD}@postgres:5432/postgres"
+        --password "$${DB_PASSWORD}" &&
+        python -m agentqa.platform.storage.migrate upgrade --create-database
+        --admin-dsn "$${DB_DSN_BASE}://agentqa_bootstrap:$${DB_PASSWORD}@postgres:5432/postgres"
+        --dsn "$${DB_DSN_BASE}://agentqa_migrate:$${DB_PASSWORD}@postgres:5432/agentqa"
+        --password "$${DB_PASSWORD}"
+    environment:
+      DB_DSN_BASE: *dsn-base
+      DB_PASSWORD: *db-password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - control
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    environment:
+      AGENTQA_DSN: "postgresql+psycopg://agentqa_api:${AGENTQA_DB_PASSWORD}@postgres:5432/agentqa"
+      AGENTQA_WORKER_DSN: "postgresql+psycopg://agentqa_worker:${AGENTQA_DB_PASSWORD}@postgres:5432/agentqa"
+      AGENTQA_ARTIFACT_DIR: /var/lib/agentqa/artifacts
+      AGENTQA_SHARED_ORIGINS: ${AGENTQA_SHARED_ORIGINS:?set HTTPS allowlist, vd https://qa.example.com}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - artifacts:/var/lib/agentqa/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - control
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.worker
+    environment:
+      AGENTQA_DSN: "postgresql+psycopg://agentqa_worker:${AGENTQA_DB_PASSWORD}@postgres:5432/agentqa"
+      AGENTQA_SUPERVISOR_DSN: "postgresql+psycopg://agentqa_supervisor:${AGENTQA_DB_PASSWORD}@postgres:5432/agentqa"
+      AGENTQA_WORKSPACE_ID: ${AGENTQA_WORKSPACE_ID:?set workspace id}
+      AGENTQA_PRINCIPAL_ID: ${AGENTQA_PRINCIPAL_ID:?set principal id}
+      AGENTQA_WORKER_MAINTENANCE_ONLY: ${AGENTQA_WORKER_MAINTENANCE_ONLY:-0}
+    volumes:
+      - artifacts:/var/lib/agentqa/artifacts
+      - scratch:/var/lib/agentqa/scratch
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - control
+      - egress
+
+  scheduler:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.worker
+    command: ["python", "-m", "agentqa.platform.scheduler.daemon"]
+    environment:
+      AGENTQA_DSN: "postgresql+psycopg://agentqa_worker:${AGENTQA_DB_PASSWORD}@postgres:5432/agentqa"
+      AGENTQA_WORKSPACE_ID: ${AGENTQA_WORKSPACE_ID:?set workspace id}
+      AGENTQA_PRINCIPAL_ID: ${AGENTQA_PRINCIPAL_ID:?set principal id}
+      AGENTQA_SCHEDULER_INTERVAL: "30"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - control
+
+  egress:
+    build:
+      context: ..
+      dockerfile: infra/egress-proxy/Dockerfile
+    environment:
+      AGENTQA_EGRESS_ALLOW: ${AGENTQA_EGRESS_ALLOW:-[]}
+    networks:
+      - egress
+
+volumes:
+  postgres-data:
+  artifacts:
+  scratch:
+
+networks:
+  control:
+    internal: false
+  egress:
