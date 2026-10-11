@@ -1,7 +1,7 @@
 # Runbook — Demo AgentQA end-to-end (P32.2)
 
 - Ngày: 2026-10-11
-- Trạng thái: Harness đã triển khai; receipts đang chạy/bổ sung
+- Trạng thái: Đã chạy thành công (10/10 bước, mode fake, live_calls=0)
 - Liên quan: [spec product](../specs/product-spec.md), [plan gói 09](../plans/09-release.md)
 
 ## 1. Phạm vi
@@ -31,6 +31,11 @@ uv run --locked python tools/run_demo.py --models fake
 - Output: tóm tắt JSON các bước + đường dẫn report trong `artifacts/demo/`.
 - Report mới nhất: `artifacts/demo/latest.json` — chứa `mode`, `live_calls`, từng step với ok/detail.
 
+Receipt lần chạy 2026-10-11: `artifacts/demo/20261011T183219Z.json` — 10/10 steps ok,
+`mode=fake`, `live_calls=0`. Log: `.opencode/execution/release-20261011/receipts/t9-demo-run.log`.
+Lưu ý: demo cần PostgreSQL test profile. Nếu port mặc định 55432 bị giữ, đặt
+`AGENTQA_TEST_PGPORT` (ví dụ 15432) cho cả `docker compose` và tool (xem change C2 trong ledger).
+
 ## 4. Các bước và bằng chứng
 
 | Bước | Diễn giải | Bằng chứng |
@@ -42,7 +47,7 @@ uv run --locked python tools/run_demo.py --models fake
 | agent.run_passed | Submit run policy `llm` với fake agent script | `verdict=passed`, `item_count=1` trong receipt |
 | replay.run_passed | Replay strict của cùng revision | `verdict`, `gate` trong receipt |
 | mutation.healed | Drill fixture (`healing_delete_item`) + phục hồi với `allow_healing` | `verdict=passed`, annotation `healed` trong receipt |
-| bug.detected | Ca duplicate chạy trên seed cho phép trùng → business failed | `verdict=failed`, `duplicate_count=2` trong receipt |
+| bug.detected | Ca kỳ vọng 2 bản ghi nhưng app chỉ tạo 1 → business failed | `verdict=failed`, `observed_count=1` trong receipt |
 | evidence.report | Tạo báo cáo JSON cho run lỗi | `report_id`, `digest`, HTTP 200 content trong receipt |
 | compare.config_diff | So agent run và replay run | `policy` khác nhau, cùng config còn lại trong receipt |
 

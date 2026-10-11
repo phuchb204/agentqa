@@ -1,7 +1,7 @@
 # Gói 09 — Nghiệm thu và bàn giao sản phẩm
 
 - Ngày: 2026-10-06
-- Trạng thái: P31 đã triển khai và nghiệm thu offline (2026-10-11): acceptance 36/36 scenario (24 AC + 12 NFR), fault matrix 24/24, OS smoke windows+linux, UI E2E 6/6 scenario, workloads W1–W6 đạt objectives (p95 delivery 0.28s, p95 read 0.21s, zero duplicate), canary scan 0 matches. P32 chưa triển khai.
+- Trạng thái: P31 đã triển khai và nghiệm thu offline (2026-10-11): acceptance 36/36 scenario (24 AC + 12 NFR), fault matrix 24/24, OS smoke windows+linux, UI E2E 6/6 scenario, workloads W1–W6 đạt objectives (p95 delivery 0.28s, p95 read 0.21s, zero duplicate), canary scan 0 matches. P32 đã triển khai (2026-10-12): release validation structural pass + SBOM + manifest (full_release=false do calibration provisional), demo 10/10 steps mode fake, RQ validate + recompute khớp, fresh install + redaction scan + restore exercise pass. Test-infra dùng port cấu hình qua AGENTQA_TEST_PGPORT (mặc định 55432) do port mặc định bị Windows giữ (change C2).
 - Plan: [rebuild-plan](rebuild-plan.md)
 - Nguồn: [Spec AC](../specs/product-spec.md), [design mapping](../design/acceptance-mapping.md), [acceptance plan](acceptance-plan.md)
 - Gate: G8

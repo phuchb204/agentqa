@@ -17,16 +17,31 @@ TEST_BOOTSTRAP_DSN = "postgresql+psycopg://agentqa_bootstrap:agentqa_test_local_
 TEST_ROLE_PASSWORD = "agentqa_test_local_only"
 
 
+def _test_port() -> int:
+    import os
+
+    try:
+        return int(os.environ.get("AGENTQA_TEST_PGPORT", "55432"))
+    except ValueError:
+        return 55432
+
+
 def role_dsn(
-    role: str, database: str, *, password: str = TEST_ROLE_PASSWORD, host: str = "127.0.0.1", port: int = 55432
+    role: str, database: str, *, password: str = TEST_ROLE_PASSWORD, host: str = "127.0.0.1", port: int | None = None
 ) -> str:
-    return f"postgresql+psycopg://{role}:{password}@{host}:{port}/{database}"
+    resolved_port = _test_port() if port is None else port
+    return f"postgresql+psycopg://{role}:{password}@{host}:{resolved_port}/{database}"
 
 
 def admin_dsn(
-    database: str = "postgres", *, password: str = TEST_ROLE_PASSWORD, host: str = "127.0.0.1", port: int = 55432
+    database: str = "postgres",
+    *,
+    password: str = TEST_ROLE_PASSWORD,
+    host: str = "127.0.0.1",
+    port: int | None = None,
 ) -> str:
-    return f"postgresql+psycopg://agentqa_bootstrap:{password}@{host}:{port}/{database}"
+    resolved_port = _test_port() if port is None else port
+    return f"postgresql+psycopg://agentqa_bootstrap:{password}@{host}:{resolved_port}/{database}"
 
 
 async def _execute_statements(dsn: str, statements: Iterable[str]) -> None:

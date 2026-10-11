@@ -27,8 +27,94 @@ AGENT_SCRIPT = {
     "jev": [],
 }
 HEALING_CASE = REPO_ROOT / "benchmarks" / "public" / "cases" / "taskboard" / "healing_delete_item.yaml"
-BUG_CASE = REPO_ROOT / "benchmarks" / "public" / "cases" / "taskboard" / "duplicate_label_rejected.yaml"
-BUG_ITEM_NAME = "Việc namespace A"
+BUG_ITEM_NAME = "Việc demo bug"
+BUG_DOCUMENT = {
+    "schema_version": "case/1",
+    "logical_key": "demo_bug_case",
+    "title": "Phát hiện thiếu bản ghi thứ hai",
+    "goal": "Kỳ vọng nghiệp vụ cần hai bản ghi nhưng ứng dụng chỉ tạo một",
+    "requirements": ["create_item"],
+    "source_defs": {
+        "create_item": {
+            "source_content_digest": "1b37b1a900f62fb258ea067be0549ac1521129604f18dc316566c10fefe057d0",
+            "anchor": {"type": "section", "value": "create-item"},
+            "quote_digest": "99030afd9733cdd28fd467f6139c23619d4846791e829a44bb789867b2ee8aa3",
+            "provenance": "user",
+        }
+    },
+    "postcondition_defs": {},
+    "parameter_defs": {"item_name": {"type": "string", "required": True}},
+    "fixture_refs": ["taskboard@1"],
+    "nodes": [
+        {
+            "id": "open_login",
+            "kind": "action",
+            "operation": "navigate",
+            "value": {"kind": "literal", "value": "/login"},
+            "side_effect": "read",
+        },
+        {
+            "id": "username",
+            "kind": "action",
+            "operation": "fill",
+            "target": {"intent": "login_username", "role": "textbox", "name": "Tài khoản"},
+            "value": {"kind": "secret", "credential_ref": "taskboard.alice.username"},
+            "side_effect": "reversible",
+        },
+        {
+            "id": "password",
+            "kind": "action",
+            "operation": "fill",
+            "target": {"intent": "login_password", "locators": [{"kind": "label", "value": "Mật khẩu"}]},
+            "value": {"kind": "secret", "credential_ref": "taskboard.alice.password"},
+            "side_effect": "reversible",
+        },
+        {
+            "id": "sign_in",
+            "kind": "action",
+            "operation": "click",
+            "target": {"intent": "login_submit", "role": "button", "name": "Đăng nhập"},
+            "side_effect": "external_write",
+        },
+        {
+            "id": "item_name",
+            "kind": "action",
+            "operation": "fill",
+            "target": {"intent": "new_item", "role": "textbox", "name": "Việc mới"},
+            "value": {"kind": "parameter", "name": "item_name", "type": "string"},
+            "side_effect": "reversible",
+        },
+        {
+            "id": "add_item",
+            "kind": "action",
+            "operation": "click",
+            "target": {"intent": "create_item", "role": "button", "name": "Thêm việc"},
+            "side_effect": "external_write",
+        },
+        {
+            "id": "result",
+            "kind": "checkpoint",
+            "assertions": [
+                {
+                    "id": "two_records_exist",
+                    "required": True,
+                    "target": {
+                        "intent": "created_item_row",
+                        "role": "listitem",
+                        "entity_scope": {
+                            "field": "text",
+                            "value": {"kind": "parameter", "name": "item_name", "type": "string"},
+                        },
+                    },
+                    "comparator": "count_equals",
+                    "expected": {"kind": "literal", "value": 2},
+                    "source_refs": ["create_item"],
+                }
+            ],
+        },
+    ],
+    "completion": {"required_nodes": ["add_item", "result"], "required_assertions": ["two_records_exist"]},
+}
 
 
 class DemoError(RuntimeError):
@@ -40,7 +126,9 @@ def _now_iso() -> str:
 
 
 def _run_db(harness, coro):
-    return harness._run_db(coro)
+    from tools.ui_harness.runner import _run_db as harness_run_db
+
+    return harness_run_db(coro)
 
 
 def _seed_environment(harness, *, namespace: str, seed: str, item_name: str):
@@ -152,6 +240,19 @@ def _compare_runs(harness, run_a, run_b):
     return _run_db(harness, compare())
 
 
+def _wait_run_state(client, workspace: str, run_id, headers, *, timeout: float = 300.0) -> dict:
+    deadline = time.monotonic() + timeout
+    last: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/workspaces/{workspace}/runs/{run_id}", headers=headers)
+        response.raise_for_status()
+        last = response.json()
+        if last.get("status") in ("succeeded", "failed", "cancelled", "inconclusive", "error", "blocked"):
+            return last
+        time.sleep(1.0)
+    raise DemoError(f"run {run_id} không kết thúc trong {timeout}s (state cuối: {last})")
+
+
 def _probe_label_count(harness, run_id, label: str) -> int:
     events = harness.run_events(run_id)
     for event in reversed(events):
@@ -254,15 +355,21 @@ def run_demo(*, build_web: bool = False) -> dict[str, Any]:
                 f"case={case_id} edit_version={applied.json()['edit_version']} diff={len(applied.json()['diff'])}",
             )
 
+            source_names = list(applied.json()["content"].get("source_defs", {}).keys())
             confirmed = client.post(
                 f"/api/v1/workspaces/{workspace}/cases/{case_id}/draft/confirm-sources",
-                json={"source_names": ["demo_source"]},
-                headers=headers,
+                json={"source_names": source_names},
+                headers={**headers, "If-Match": f'"{applied.json()["edit_version"]}"'},
             )
             confirmed.raise_for_status()
-            promoted = client.post(f"/api/v1/workspaces/{workspace}/cases/{case_id}/draft/promote", headers=headers)
+            promoted = client.post(
+                f"/api/v1/workspaces/{workspace}/cases/{case_id}/draft/promote",
+                headers={**headers, "If-Match": f'"{confirmed.json()["edit_version"]}"'},
+            )
             promoted.raise_for_status()
-            revision_id = promoted.json()["revision_id"]
+            from uuid import UUID as _UUID
+
+            revision_id = _UUID(promoted.json()["revision_id"])
             record(
                 "case.promoted_ready",
                 promoted.json()["revision_no"] >= 1,
@@ -276,7 +383,7 @@ def run_demo(*, build_web: bool = False) -> dict[str, Any]:
                 policy="llm",
                 gate_profile="strict",
             )
-            agent_state = harness.wait_for_run(agent_run)
+            agent_state = _wait_run_state(client, workspace, agent_run, headers)
             agent_count = _probe_label_count(harness, agent_run, "Việc UI E2E")
             record(
                 "agent.run_passed",
@@ -285,7 +392,7 @@ def run_demo(*, build_web: bool = False) -> dict[str, Any]:
             )
 
             replay_run = harness.run_replay(revision_id)
-            replay_state = harness.wait_for_run(replay_run)
+            replay_state = _wait_run_state(client, workspace, replay_run, headers)
             record(
                 "replay.run_passed",
                 replay_state["verdict"] == "passed",
@@ -296,19 +403,16 @@ def run_demo(*, build_web: bool = False) -> dict[str, Any]:
             healing_document["logical_key"] = "demo_healing"
             healing_revision = harness.seed_case_document(logical_key="demo_healing", document=healing_document)
             heal_run = harness.run_replay(healing_revision, policy="replay_healing", gate_profile="allow_healing")
-            heal_state = harness.wait_for_run(heal_run)
+            heal_state = _wait_run_state(client, workspace, heal_run, headers)
             record(
                 "mutation.healed",
                 heal_state["verdict"] == "passed" and "healed" in heal_state["reasons"],
                 f"run={heal_run} verdict={heal_state['verdict']} reasons={heal_state['reasons']}",
             )
 
-            bug_environment = _seed_environment(
-                harness, namespace="demo-bug", seed="isolation", item_name=BUG_ITEM_NAME
-            )
-            bug_document = yaml.safe_load(BUG_CASE.read_text(encoding="utf-8"))
-            bug_document["logical_key"] = "demo_bug_case"
-            bug_revision = harness.seed_case_document(logical_key="demo_bug_case", document=bug_document)
+            bug_environment = _seed_environment(harness, namespace="demo-bug", seed="success", item_name=BUG_ITEM_NAME)
+            harness.healing_profile = None
+            bug_revision = harness.seed_case_document(logical_key="demo_bug_case", document=dict(BUG_DOCUMENT))
             bug_run = _submit_run(
                 harness,
                 case_revision_id=bug_revision,
@@ -316,12 +420,32 @@ def run_demo(*, build_web: bool = False) -> dict[str, Any]:
                 policy="default",
                 gate_profile="strict",
             )
-            bug_state = harness.wait_for_run(bug_run)
+            bug_state = _wait_run_state(client, workspace, bug_run, headers)
             bug_count = _probe_label_count(harness, bug_run, BUG_ITEM_NAME)
+            bug_events = harness.run_events(bug_run)
+            bug_probe: dict = {}
+            bug_assertions: list = []
+            for event in reversed(bug_events):
+                if event["type"] == "fixture.probed":
+                    bug_probe = event["summary"].get("probe", {})
+                    break
+            detail_response = client.get(f"/api/v1/workspaces/{workspace}/runs/{bug_run}/detail", headers=headers)
+            if detail_response.status_code == 200:
+                for execution in detail_response.json().get("executions", []):
+                    for checkpoint in execution.get("checkpoints", []):
+                        for assertion in checkpoint.get("assertions", []):
+                            bug_assertions.append(
+                                {
+                                    "id": assertion.get("assertion_id"),
+                                    "status": assertion.get("status"),
+                                    "observed": str(assertion.get("observed"))[:80],
+                                }
+                            )
             record(
                 "bug.detected",
-                bug_state["verdict"] == "failed" and bug_count == 2,
-                f"run={bug_run} verdict={bug_state['verdict']} duplicate_count={bug_count}",
+                bug_state["verdict"] == "failed" and bug_count == 1,
+                f"run={bug_run} verdict={bug_state['verdict']} observed_count={bug_count} "
+                f"labels={bug_probe.get('label_counts')} assertions={bug_assertions}",
             )
 
             report_response = client.post(
