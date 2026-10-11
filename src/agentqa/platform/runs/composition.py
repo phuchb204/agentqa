@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -15,12 +16,124 @@ from agentqa.agent.policies.values import ValueGenerator, ValueResolver
 from agentqa.agent.replay.runner import ActionOutcomeView, StepRecord
 from agentqa.contracts.canonical import digest_content
 from agentqa.contracts.case import ActionNode, CaseContent, CheckpointNode
+from agentqa.contracts.errors import ErrorCode
 from agentqa.contracts.healing import HealingRecord
+from agentqa.contracts.models import (
+    DecisionRequest,
+    DecisionResult,
+    GenerationRequest,
+    GenerationResult,
+    MessagePurpose,
+    ModelCallOutcome,
+    ModelCallRecord,
+    ProviderRoute,
+)
 from agentqa.contracts.observation import Actionability, Modality
 from agentqa.contracts.policies import PolicyKind, RunMode, validate_mode_policy_modality
 from agentqa.contracts.ports import DecisionModelPort, GenerativeModelPort
 from agentqa.contracts.verification import AssertionResult
+from agentqa.models.usage import CallLedger
 from agentqa.platform.security.taint import TaintRegistry
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _error_code(exc: Exception) -> ErrorCode | None:
+    code = getattr(exc, "code", None)
+    return code if isinstance(code, ErrorCode) else None
+
+
+class LedgeredGenerative:
+    def __init__(self, inner: GenerativeModelPort, ledger: CallLedger, *, route: ProviderRoute) -> None:
+        self._inner = inner
+        self._ledger = ledger
+        self._route = route
+        self._requested_model = str(getattr(inner, "_model", "") or "unknown")
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        started = _utc_now()
+        try:
+            result = await self._inner.generate(request)
+        except Exception as exc:
+            self._ledger.record(
+                ModelCallRecord(
+                    call_id=uuid4(),
+                    purpose=request.purpose,
+                    requested_model=self._requested_model,
+                    route=self._route,
+                    outcome=ModelCallOutcome.FAILED,
+                    error_code=_error_code(exc),
+                    started_at=started,
+                    ended_at=_utc_now(),
+                )
+            )
+            raise
+        self._ledger.record(
+            ModelCallRecord(
+                call_id=uuid4(),
+                purpose=request.purpose,
+                requested_model=self._requested_model,
+                resolved_model=result.model_resolved or result.model,
+                route=result.route,
+                usage=result.usage,
+                outcome=ModelCallOutcome.SUCCEEDED,
+                started_at=started,
+                ended_at=_utc_now(),
+            )
+        )
+        return result
+
+
+class LedgeredDecision:
+    def __init__(self, inner: DecisionModelPort, ledger: CallLedger) -> None:
+        self._inner = inner
+        self._ledger = ledger
+        self._requested_model = str(getattr(inner, "_model", "") or "unknown")
+
+    async def decide(self, request: DecisionRequest) -> DecisionResult:
+        started = _utc_now()
+        try:
+            result = await self._inner.decide(request)
+        except Exception as exc:
+            self._ledger.record(
+                ModelCallRecord(
+                    call_id=uuid4(),
+                    purpose=MessagePurpose.DECIDE,
+                    requested_model=self._requested_model,
+                    route=ProviderRoute.OPENCODE_ZEN,
+                    outcome=ModelCallOutcome.FAILED,
+                    error_code=_error_code(exc),
+                    started_at=started,
+                    ended_at=_utc_now(),
+                )
+            )
+            raise
+        self._ledger.record(
+            ModelCallRecord(
+                call_id=uuid4(),
+                purpose=MessagePurpose.DECIDE,
+                requested_model=self._requested_model,
+                resolved_model=result.model,
+                route=ProviderRoute.OPENCODE_ZEN,
+                usage=result.usage,
+                outcome=ModelCallOutcome.SUCCEEDED,
+                started_at=started,
+                ended_at=_utc_now(),
+            )
+        )
+        return result
+
+
+def ledgered_composition(composition: AgentModels, ledger: CallLedger) -> AgentModels:
+    return AgentModels(
+        generative=LedgeredGenerative(composition.generative, ledger, route=ProviderRoute.OPENCODE_GO)
+        if composition.generative is not None
+        else None,
+        decision=LedgeredDecision(composition.decision, ledger) if composition.decision is not None else None,
+        value_generator=composition.value_generator,
+    )
 
 
 @dataclass

@@ -1,0 +1,74 @@
+schema_version: case/1
+logical_key: taskboard_duplicate_rejected_static
+title: Baseline tĩnh — nhãn trùng bị từ chối
+goal: Plan tĩnh tạo việc trùng và xác nhận bị từ chối, danh sách không đổi
+requirements: [duplicate_label]
+
+source_defs:
+  duplicate_label:
+    source_content_digest: 1b37b1a900f62fb258ea067be0549ac1521129604f18dc316566c10fefe057d0
+    anchor: {type: section, value: duplicate-label}
+    quote_digest: a371b7f25f528eece09c9cb7e8e0059c335655b64a9a510e18e7990971129000
+    provenance: user
+
+parameter_defs:
+  item_name: {type: string, required: true}
+
+fixture_refs: [taskboard@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: taskboard.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: taskboard.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+  - id: item_name
+    kind: action
+    operation: fill
+    target: {intent: new_item, role: textbox, name: Việc mới}
+    value: {kind: parameter, name: item_name, type: string}
+    side_effect: reversible
+  - id: add_duplicate
+    kind: action
+    operation: click
+    target: {intent: create_item, role: button, name: Thêm việc}
+    side_effect: external_write
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: duplicate_error_shown
+        required: true
+        target: {intent: form_error, locators: [{kind: css, value: ".form-error"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: Nhãn không hợp lệ hoặc đã tồn tại}
+        source_refs: [duplicate_label]
+      - id: item_count_unchanged
+        required: true
+        target:
+          intent: created_item_row
+          role: listitem
+          entity_scope: {field: text, value: {kind: parameter, name: item_name, type: string}}
+        comparator: count_equals
+        expected: {kind: literal, value: 1}
+        source_refs: [duplicate_label]
+
+completion:
+  required_nodes: [add_duplicate, result]
+  required_assertions: [duplicate_error_shown, item_count_unchanged]

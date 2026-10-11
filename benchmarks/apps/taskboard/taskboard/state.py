@@ -66,6 +66,9 @@ class Job:
     item_id: str | None = None
 
 
+MUTATION_OPERATORS = frozenset({"rename_label", "duplicate_label", "wrong_entity_toggle", "delay_settle"})
+
+
 @dataclass
 class Namespace:
     accounts: dict[str, str] = field(default_factory=dict)
@@ -78,6 +81,7 @@ class Namespace:
     seed_accounts: dict[str, str] = field(default_factory=dict)
     seed_items: list[dict[str, Any]] = field(default_factory=list)
     seed_policy: str = "allow"
+    mutation: dict[str, Any] | None = None
 
     def next_item_id(self) -> str:
         self.item_seq += 1
@@ -88,6 +92,14 @@ class TaskboardStore:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._namespaces: dict[str, Namespace] = {}
+        self._pending_mutations: dict[str, dict[str, Any]] = {}
+
+    def arm_mutation(self, name: str, operator: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if operator not in MUTATION_OPERATORS:
+            return {"armed": False, "reason": "unknown_operator"}
+        with self._lock:
+            self._pending_mutations[name] = {"operator": operator, "params": dict(params or {})}
+        return {"armed": True, "reason": None}
 
     def _reject_bad_namespace(self, name: str) -> None:
         if not NAMESPACE_PATTERN.match(name):
@@ -125,7 +137,10 @@ class TaskboardStore:
                 Event(kind="namespace_prepared", at=time.time(), detail=f"policy={duplicate_policy}")
             )
             self._namespaces[name] = namespace
-            return namespace
+        pending = self._pending_mutations.pop(name, None)
+        if pending is not None:
+            self.apply_mutation(name, pending["operator"], pending["params"])
+        return namespace
 
     def reset(self, name: str) -> Namespace:
         with self._lock:
@@ -217,12 +232,56 @@ class TaskboardStore:
             item = namespace.items.get(item_id)
             if item is None:
                 return False
-            item.done = not item.done
+            target = item
+            mutation = namespace.mutation or {}
+            if mutation.get("operator") == "wrong_entity_toggle" and namespace.items:
+                target = next(iter(namespace.items.values()))
+            target.done = not target.done
             namespace.events.append(
-                Event(kind="item_toggled", at=time.time(), entity_id=item.id, entity_label=item.label)
+                Event(kind="item_toggled", at=time.time(), entity_id=target.id, entity_label=target.label)
             )
             namespace.revision += 1
             return True
+
+    def apply_mutation(self, name: str, operator: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload = dict(params or {})
+        if operator not in MUTATION_OPERATORS:
+            return {"applied": False, "reason": "unknown_operator", "operator": operator, "patch": {}}
+        with self._lock:
+            namespace = self._namespace(name)
+            patch: dict[str, Any] = {}
+            if operator == "rename_label":
+                source = str(payload.get("from", ""))
+                target = str(payload.get("to", ""))
+                if source != "Xoá":
+                    return {"applied": False, "reason": "unknown_label", "operator": operator, "patch": {}}
+                if not target.strip() or target.strip() == source:
+                    return {"applied": False, "reason": "equivalent_label", "operator": operator, "patch": {}}
+                patch = {"from": source, "to": target.strip()}
+            elif operator == "duplicate_label":
+                label = str(payload.get("label", "")).strip()
+                if not any(item.label == label for item in namespace.items.values()):
+                    return {"applied": False, "reason": "unknown_label", "operator": operator, "patch": {}}
+                clone = Item(id=namespace.next_item_id(), label=label)
+                namespace.items[clone.id] = clone
+                namespace.revision += 1
+                patch = {"label": label, "clone_id": clone.id}
+            elif operator == "wrong_entity_toggle":
+                if not namespace.items:
+                    return {"applied": False, "reason": "insufficient_rows", "operator": operator, "patch": {}}
+                patch = {"toggles_first_item": True}
+            elif operator == "delay_settle":
+                seconds = float(payload.get("seconds", 0) or 0)
+                if seconds <= 0:
+                    return {"applied": False, "reason": "invalid_delay", "operator": operator, "patch": {}}
+                patch = {"seconds": seconds}
+            namespace.mutation = {"operator": operator, "params": payload, "patch": patch}
+            namespace.events.append(Event(kind="mutation_applied", at=time.time(), detail=operator))
+            return {"applied": True, "reason": None, "operator": operator, "patch": patch}
+
+    def mutation(self, name: str) -> dict[str, Any] | None:
+        with self._lock:
+            return self._namespace(name).mutation
 
     def delete_item(self, name: str, item_id: str) -> bool:
         with self._lock:
@@ -284,6 +343,7 @@ class TaskboardStore:
                 "namespace": name,
                 "revision": namespace.revision,
                 "duplicate_policy": namespace.duplicate_policy,
+                "mutation": namespace.mutation,
                 "items": [{"id": item.id, "label": item.label, "done": item.done} for item in namespace.items.values()],
                 "jobs": {
                     job.id: {"label": job.label, "status": job.status, "item_id": job.item_id}

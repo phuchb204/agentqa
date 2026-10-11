@@ -1,7 +1,7 @@
 # Gói 08 — Benchmark, calibration và ba RQ
 
 - Ngày: 2026-10-06
-- Trạng thái: Chưa triển khai/chạy nghiên cứu
+- Trạng thái: P27–P30 đã triển khai; live calibration và RQ1–RQ3 đã chạy với provider thật, receipts/bundles trong `artifacts/`. Calibration profile vẫn provisional (bound vượt ceiling ở n=2 nhóm); RQ1 vision-first blocked do capability ảnh; production auto-healing giữ provisional.
 - Plan: [rebuild-plan](rebuild-plan.md)
 - Nguồn: [Research questions](../research-questions.md), [experiments/evaluation](../design/experiments-and-evaluation.md)
 - Gate: G7

@@ -1,0 +1,68 @@
+schema_version: case/1
+logical_key: shopflow_search_filter_static
+title: Baseline tĩnh — tìm kiếm và lọc
+goal: Plan tĩnh tìm sản phẩm văn phòng còn hàng theo từ khóa
+requirements: [search_filter]
+
+source_defs:
+  search_filter:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: search-filter}
+    quote_digest: 28816d0f9d1311d067315b9a4fbe9c50891558463bf864c016406e04f4673db8
+    provenance: user
+
+parameter_defs:
+  keyword: {type: string, required: true}
+
+fixture_refs: [shopflow@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: shopflow.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: shopflow.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+  - id: keyword_input
+    kind: action
+    operation: fill
+    target: {intent: search_input, role: textbox, name: Tìm sản phẩm}
+    value: {kind: parameter, name: keyword, type: string}
+    side_effect: reversible
+  - id: run_search
+    kind: action
+    operation: click
+    target: {intent: search_submit, role: button, name: Tìm}
+    side_effect: external_write
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: keyword_rows
+        required: true
+        target:
+          intent: search_result_row
+          role: listitem
+          entity_scope: {field: text, value: {kind: parameter, name: keyword, type: string}}
+        comparator: count_equals
+        expected: {kind: literal, value: 2}
+        source_refs: [search_filter]
+
+completion:
+  required_nodes: [run_search, result]
+  required_assertions: [keyword_rows]

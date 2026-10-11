@@ -11,6 +11,7 @@ from agentqa.agent.healing.ranker import HeuristicRanker, RankContext
 from agentqa.agent.identity.resolver import SceneCandidate
 from agentqa.contracts.actions import Operation
 from agentqa.contracts.calibration import CalibrationProfile
+from agentqa.contracts.canonical import digest_content
 from agentqa.contracts.healing import (
     HealingActor,
     HealingDecision,
@@ -22,6 +23,11 @@ from agentqa.contracts.healing import (
 from agentqa.contracts.identity import LocatorAlternative, LocatorKind, TargetDescriptor
 
 STATEFUL_OPERATIONS = frozenset({Operation.CLICK, Operation.CHECK, Operation.UNCHECK, Operation.SELECT})
+
+
+def stable_opportunity_id(context: HealContext, descriptor: TargetDescriptor) -> str:
+    material = digest_content({"node": context.node_id, "intent": descriptor.intent, "name": descriptor.name})
+    return f"opp-{material[:16]}"
 
 
 class RankingPort(Protocol):
@@ -132,7 +138,7 @@ class Healer:
             )
         recovered = build_runtime_target(descriptor, candidate)
         record = HealingRecord(
-            opportunity_id=f"opp-{uuid4().hex}",
+            opportunity_id=stable_opportunity_id(context, descriptor),
             attempt_id=f"heal-{uuid4().hex}",
             actor=context.actor,
             node_id=context.node_id,
@@ -164,7 +170,7 @@ class Healer:
         error: str | None = None,
     ) -> HealDecision:
         record = HealingRecord(
-            opportunity_id=f"opp-{uuid4().hex}",
+            opportunity_id=stable_opportunity_id(context, descriptor),
             attempt_id=f"heal-{uuid4().hex}",
             actor=context.actor,
             node_id=context.node_id,

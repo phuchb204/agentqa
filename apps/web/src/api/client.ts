@@ -11,6 +11,10 @@ import type {
   DraftRun,
   DiagnosticSummary,
   Entity,
+  ExperimentExecuteSummary,
+  ExperimentResults,
+  ExperimentRevision,
+  ExperimentRevisionList,
   FieldError,
   HealingRecord,
   Impact,
@@ -177,6 +181,17 @@ export interface ApiClient {
   ): Promise<{ control_id: string; control_revision: number }>;
   getArtifact(workspaceId: string, artifactId: string): Promise<ArtifactSummary>;
   artifactContentUrl(workspaceId: string, artifactId: string): string;
+  listExperimentRevisions(workspaceId: string): Promise<ExperimentRevisionList>;
+  createExperimentRevision(
+    workspaceId: string,
+    logicalKey: string,
+    content: Record<string, unknown>,
+  ): Promise<ExperimentRevision>;
+  executeExperimentRevision(
+    workspaceId: string,
+    revisionId: string,
+  ): Promise<ExperimentExecuteSummary>;
+  getExperimentResults(workspaceId: string, revisionId: string): Promise<ExperimentResults>;
 }
 
 function fieldErrorsFrom(error: unknown): FieldError[] {
@@ -765,6 +780,33 @@ export function createApiClient(
     },
     artifactContentUrl(workspaceId, artifactId) {
       return `/api/v1/workspaces/${workspaceId}/artifacts/${artifactId}/content`;
+    },
+    async listExperimentRevisions(workspaceId) {
+      const result = await client.GET("/api/v1/workspaces/{workspace_id}/experiments/revisions", {
+        params: { path: { workspace_id: workspaceId } },
+      });
+      return unwrap<ExperimentRevisionList>(result);
+    },
+    async createExperimentRevision(workspaceId, logicalKey, content) {
+      const result = await client.POST("/api/v1/workspaces/{workspace_id}/experiments/revisions", {
+        params: { path: { workspace_id: workspaceId } },
+        body: { logical_key: logicalKey, content } as never,
+      });
+      return unwrap<ExperimentRevision>(result);
+    },
+    async executeExperimentRevision(workspaceId, revisionId) {
+      const result = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/experiments/revisions/{revision_id}/execute",
+        { params: { path: { workspace_id: workspaceId, revision_id: revisionId } } },
+      );
+      return unwrap<ExperimentExecuteSummary>(result);
+    },
+    async getExperimentResults(workspaceId, revisionId) {
+      const result = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/experiments/revisions/{revision_id}/results",
+        { params: { path: { workspace_id: workspaceId, revision_id: revisionId } } },
+      );
+      return unwrap<ExperimentResults>(result);
     },
   };
 }

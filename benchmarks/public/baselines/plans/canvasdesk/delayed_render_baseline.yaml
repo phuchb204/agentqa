@@ -1,0 +1,56 @@
+schema_version: case/1
+logical_key: canvasdesk_delayed_render_static
+title: Baseline tĩnh — chờ tiện ích render trễ
+goal: Plan tĩnh chờ tiện ích trễ sẵn sàng rồi xác nhận nội dung
+requirements: [delayed_render]
+
+source_defs:
+  delayed_render:
+    source_content_digest: 0015a40098c948d44ac2f929e4965ecd771340aac3f8fb0602cdbeaff858a45d
+    anchor: {type: section, value: delayed-render}
+    quote_digest: da28a0080c781eafc955d19b2d64f3843d3992b6dda64421dccb116678090906
+    provenance: user
+
+fixture_refs: [canvasdesk@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: canvasdesk.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: canvasdesk.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+  - id: wait_widget
+    kind: action
+    operation: wait
+    target: {intent: delayed_widget, locators: [{kind: css, value: "#delayed-widget"}]}
+    side_effect: read
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: widget_text
+        required: true
+        target: {intent: delayed_widget, locators: [{kind: css, value: "#delayed-widget"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: Tiện ích đã sẵn sàng}
+        source_refs: [delayed_render]
+
+completion:
+  required_nodes: [wait_widget, result]
+  required_assertions: [widget_text]

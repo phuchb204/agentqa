@@ -1,0 +1,172 @@
+schema_version: case/1
+logical_key: shopflow_cart_checkout_async
+title: Thêm vào giỏ, đổi số lượng và thanh toán không chờ
+goal: Dòng giỏ hàng tham chiếu đúng sản phẩm; thanh toán xác nhận đơn sau khi tiến trình hoàn tất
+requirements: [add_to_cart, checkout_async]
+
+source_defs:
+  add_to_cart:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: add-to-cart}
+    quote_digest: 6088e461e403d13cec3b446d4569aceccd53d3c80c43fcc597f3b4750e91e00d
+    provenance: user
+  checkout_async:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: checkout-async}
+    quote_digest: 31950d587b756c477c7cd080c66606c28f420e7ad5d2c60c4316dbbd90e1ef7e
+    provenance: user
+
+postcondition_defs:
+  authenticated:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: catalog_heading, role: heading, name: Cửa hàng}
+      expected: {kind: literal, value: true}
+  rows_loaded:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: count_greater_or_equal
+      target:
+        intent: search_result_row
+        role: listitem
+        entity_scope: {field: text, value: {kind: parameter, name: keyword, type: string}}
+      expected: {kind: literal, value: 1}
+  job_submitted:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: job_pending, locators: [{kind: css, value: ".job-status"}]}
+      expected: {kind: literal, value: true}
+
+parameter_defs:
+  keyword: {type: string, required: true}
+
+fixture_refs: [shopflow@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: shopflow.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: shopflow.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [authenticated]
+  - id: keyword_input
+    kind: action
+    operation: fill
+    target: {intent: search_input, role: textbox, name: Tìm sản phẩm}
+    value: {kind: parameter, name: keyword, type: string}
+    side_effect: reversible
+  - id: run_search
+    kind: action
+    operation: click
+    target: {intent: search_submit, role: button, name: Tìm}
+    side_effect: external_write
+    postconditions: [rows_loaded]
+  - id: add_product
+    kind: action
+    operation: click
+    target:
+      intent: add_to_cart
+      role: button
+      name: Thêm Ly thuỷ tinh vào giỏ
+    side_effect: external_write
+  - id: cart_result
+    kind: checkpoint
+    assertions:
+      - id: cart_line_once
+        required: true
+        target: {intent: cart_row, role: listitem}
+        comparator: count_equals
+        expected: {kind: literal, value: 1}
+        source_refs: [add_to_cart]
+      - id: cart_relation
+        required: true
+        target: {intent: cart_relation, locators: [{kind: css, value: "#cart-list .cart-relation"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: "Sản phẩm: Ly thuỷ tinh"}
+        source_refs: [add_to_cart]
+  - id: qty_select
+    kind: action
+    operation: select
+    target: {intent: cart_qty, role: combobox, name: Số lượng Ly thuỷ tinh}
+    value: {kind: literal, value: "2"}
+    side_effect: reversible
+  - id: qty_result
+    kind: checkpoint
+    assertions:
+      - id: qty_value
+        required: true
+        target: {intent: cart_qty, role: combobox, name: Số lượng Ly thuỷ tinh}
+        comparator: value_equals
+        expected: {kind: literal, value: "2"}
+        source_refs: [add_to_cart]
+  - id: checkout
+    kind: action
+    operation: click
+    target: {intent: checkout_submit, role: button, name: Thanh toán}
+    side_effect: external_write
+    postconditions: [job_submitted]
+  - id: wait_settle
+    kind: action
+    operation: wait
+    value: {kind: literal, value: 2}
+    side_effect: read
+  - id: open_orders
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /orders}
+    side_effect: read
+  - id: order_result
+    kind: checkpoint
+    assertions:
+      - id: order_confirmed
+        required: true
+        target: {intent: order_row, role: listitem}
+        comparator: count_greater_or_equal
+        expected: {kind: literal, value: 1}
+        source_refs: [checkout_async]
+      - id: order_status_confirmed
+        required: true
+        target: {intent: order_status, locators: [{kind: css, value: "#order-list .order-status"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: confirmed}
+        source_refs: [checkout_async]
+  - id: open_cart
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /cart}
+    side_effect: read
+  - id: cart_cleared_result
+    kind: checkpoint
+    assertions:
+      - id: cart_cleared
+        required: true
+        target: {intent: cart_empty, locators: [{kind: css, value: "#cart-empty"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: Giỏ hàng trống}
+        source_refs: [checkout_async]
+
+completion:
+  required_nodes: [add_product, checkout, order_result, cart_cleared_result]
+  required_assertions: [cart_relation, qty_value, order_status_confirmed, cart_cleared]

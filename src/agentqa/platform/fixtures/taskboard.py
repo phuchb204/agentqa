@@ -48,15 +48,16 @@ class TaskboardFixture:
     def version(self) -> dict[str, Any]:
         return self._control("GET", "/version")
 
-    def prepare(self, namespace: str, seed: str = "success") -> FixtureReceipt:
-        seed_spec = self._definition.seeds.get(seed)
+    def prepare(self, namespace: str, seed: str | None = None) -> FixtureReceipt:
+        actual_seed = seed or self._definition.default_seed
+        seed_spec = self._definition.seeds.get(actual_seed)
         if seed_spec is None:
             return FixtureReceipt(
                 fixture_ref=self._definition.ref(),
                 namespace=namespace,
                 action="prepare",
                 ok=False,
-                detail=f"seed '{seed}' không tồn tại",
+                detail=f"seed '{actual_seed}' không tồn tại",
             )
         payload = {
             "accounts": synthetic_accounts(namespace),
@@ -68,7 +69,7 @@ class TaskboardFixture:
             {
                 "definition": self._definition.ref(),
                 "fixture_digest": self._definition.digest(),
-                "seed": seed,
+                "seed": actual_seed,
                 "revision": state.get("revision"),
             },
             ensure_ascii=False,

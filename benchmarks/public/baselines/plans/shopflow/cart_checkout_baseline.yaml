@@ -1,0 +1,99 @@
+schema_version: case/1
+logical_key: shopflow_cart_checkout_static
+title: Baseline tĩnh — thêm giỏ và thanh toán
+goal: Plan tĩnh thêm sản phẩm, đổi số lượng và thanh toán tới đơn xác nhận
+requirements: [add_to_cart, checkout_async]
+
+source_defs:
+  add_to_cart:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: add-to-cart}
+    quote_digest: 6088e461e403d13cec3b446d4569aceccd53d3c80c43fcc597f3b4750e91e00d
+    provenance: user
+  checkout_async:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: checkout-async}
+    quote_digest: 31950d587b756c477c7cd080c66606c28f420e7ad5d2c60c4316dbbd90e1ef7e
+    provenance: user
+
+fixture_refs: [shopflow@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: shopflow.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: shopflow.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+  - id: keyword_input
+    kind: action
+    operation: fill
+    target: {intent: search_input, role: textbox, name: Tìm sản phẩm}
+    value: {kind: literal, value: Ly}
+    side_effect: reversible
+  - id: run_search
+    kind: action
+    operation: click
+    target: {intent: search_submit, role: button, name: Tìm}
+    side_effect: external_write
+  - id: add_product
+    kind: action
+    operation: click
+    target: {intent: add_to_cart, role: button, name: Thêm Ly thuỷ tinh vào giỏ}
+    side_effect: external_write
+  - id: qty_select
+    kind: action
+    operation: select
+    target: {intent: cart_qty, role: combobox, name: Số lượng Ly thuỷ tinh}
+    value: {kind: literal, value: "2"}
+    side_effect: reversible
+  - id: checkout
+    kind: action
+    operation: click
+    target: {intent: checkout_submit, role: button, name: Thanh toán}
+    side_effect: external_write
+  - id: wait_settle
+    kind: action
+    operation: wait
+    value: {kind: literal, value: 2}
+    side_effect: read
+  - id: open_orders
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /orders}
+    side_effect: read
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: order_status_confirmed
+        required: true
+        target: {intent: order_status, locators: [{kind: css, value: "#order-list .order-status"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: confirmed}
+        source_refs: [checkout_async]
+      - id: cart_relation
+        required: true
+        target: {intent: order_lines, locators: [{kind: css, value: "#order-list .order-lines"}]}
+        comparator: contains
+        expected: {kind: literal, value: Ly thuỷ tinh}
+        source_refs: [add_to_cart]
+
+completion:
+  required_nodes: [add_product, checkout, result]
+  required_assertions: [order_status_confirmed, cart_relation]

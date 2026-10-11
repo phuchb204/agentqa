@@ -59,8 +59,10 @@ async def test_backup_verify_and_restore_isolated(role_engines, test_db, tmp_pat
     state = await _seed_backup_state(role_engines, tmp_path)
     service = BackupService(admin_dsn(test_db.name), artifact_root=state["store"].root)
     backup_dir = tmp_path / "backup"
+    from agentqa.platform.storage.migrate import alembic_head_revision
+
     manifest = await service.create(backup_dir)
-    assert manifest.schema_version == "0012_outbox_webhooks"
+    assert manifest.schema_version == alembic_head_revision()
     assert manifest.table_counts["workspaces"] >= 1
     assert manifest.table_counts["artifacts"] >= 1
     prefix = f"{state['workspace_id']}/"

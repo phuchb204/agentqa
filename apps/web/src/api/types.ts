@@ -463,3 +463,107 @@ export interface ErrorShape {
   message: string;
   field_errors?: FieldError[];
 }
+
+export interface ExperimentRevision {
+  revision_id: string;
+  experiment_id: string;
+  logical_key: string;
+  revision_no: number;
+  content_digest: string;
+}
+
+export interface ExperimentRevisionList {
+  items: ExperimentRevision[];
+}
+
+export interface ExperimentExecuteSummary {
+  revision_id: string;
+  attempt_no: number;
+  slots: number;
+  completed: number;
+  blocked: number;
+  errors: number;
+}
+
+export interface ExperimentSlot {
+  slot_key: string;
+  arm_id: string;
+  case_key: string;
+  variant_token: string | null;
+  data_row: string | null;
+  repetition: number;
+  attempt_no: number;
+  status: "scheduled" | "running" | "completed" | "blocked" | "error";
+  blocked_reason: string | null;
+  run_id: string | null;
+  scoring_id: string | null;
+  payload: Record<string, unknown>;
+}
+
+export interface ExperimentAnalysisArm {
+  slots_total: number;
+  valid_scheduled: number;
+  completed: number;
+  blocked: number;
+  errors: number;
+  product_pass_rate: number | null;
+  oracle: {
+    known_true: number;
+    known_false: number;
+    unscorable: number;
+    success_lower_bound: number | null;
+    success_upper_bound: number | null;
+    coverage: number | null;
+    unscorable_ratio: number | null;
+  };
+  detection: {
+    detected: number;
+    missed: number;
+    detection_ratio: number | null;
+    not_applicable: boolean;
+  };
+  healing: {
+    attempts: number;
+    correct_heals: number;
+    false_heals: number;
+    refusals: number;
+  };
+  false_passes: number;
+  usage: { calls: number; input_tokens: number; output_tokens: number; wall_time_seconds: number };
+  confounds: {
+    unverified_model_alias: string[];
+    provider_cache_observed: boolean;
+    cost_basis_mixed: boolean;
+    cost_bases: string[];
+  };
+}
+
+export interface ExperimentAnalysis {
+  arms: Record<string, ExperimentAnalysisArm>;
+  comparisons: Array<{
+    left: string;
+    right: string;
+    pairs: number;
+    estimate: number | null;
+    lower: number | null;
+    upper: number | null;
+    sufficient_support: boolean;
+    non_inferior?: boolean | null;
+    non_inferiority_margin?: number;
+  }>;
+  metric_definitions: Record<string, string>;
+  seeds: number[];
+  charts: {
+    oracle_success: Array<{ arm: string; lower: number | null; upper: number | null }>;
+    false_heals: Array<{ arm: string; false_heals: number }>;
+    wall_time: Array<{ arm: string; wall_time_seconds: number }>;
+  };
+}
+
+export interface ExperimentResults {
+  revision_id: string;
+  content_digest: string;
+  manifest: Record<string, unknown>;
+  slots: ExperimentSlot[];
+  analysis: ExperimentAnalysis;
+}

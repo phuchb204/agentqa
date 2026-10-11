@@ -1,0 +1,6 @@
+schema_version: dataset/1
+logical_key: taskboard_items
+rows_digest: 1ea4a402b0c76c1a028750ede1ff4afecf62178ff19de302fb53c55681cfb809
+rows:
+  - item_name: Việc dữ liệu một
+  - item_name: Việc dữ liệu hai

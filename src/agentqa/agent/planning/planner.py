@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 
 from agentqa.contracts.case import CaseContent
+from agentqa.contracts.values import LiteralValue
 
 PLANNER_VERSION = "planner/1"
 
@@ -15,6 +16,7 @@ class Subgoal:
     node_ids: tuple[str, ...]
     requirement_refs: tuple[str, ...] = ()
     order: int = 0
+    value_hint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,10 @@ def build_plan(case: CaseContent) -> PlanningPlan:
             target = getattr(node, "target", None)
             intent = getattr(target, "intent", None)
             goal = f"{operation.value if operation else 'action'} {intent or ''}".strip()
+            value_hint = None
+            node_value = getattr(node, "value", None)
+            if isinstance(node_value, LiteralValue) and isinstance(node_value.value, str):
+                value_hint = node_value.value
             subgoals.append(
                 Subgoal(
                     subgoal_id=f"node:{node.id}",
@@ -44,6 +50,7 @@ def build_plan(case: CaseContent) -> PlanningPlan:
                     node_ids=(node.id,),
                     requirement_refs=tuple(case.requirements),
                     order=order,
+                    value_hint=value_hint,
                 )
             )
             order += 1

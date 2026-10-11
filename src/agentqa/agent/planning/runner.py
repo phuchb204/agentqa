@@ -289,6 +289,8 @@ def match_case_node(
                 return node
             if node.target.role and node.target.role == candidate.role and not node.target.name:
                 return node
+            if candidate.name and any(locator.value == candidate.name for locator in node.target.locators):
+                return node
     return None
 
 

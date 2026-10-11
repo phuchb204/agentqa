@@ -1,0 +1,22 @@
+fixture_id: shopflow
+version: 1
+seeds:
+  catalog_default:
+    catalog:
+      - {id: sp-1, name: Bút bi xanh, category: van-phong, price: 5000, stock: 5}
+      - {id: sp-2, name: Bút chì gỗ, category: van-phong, price: 7000, stock: 3}
+      - {id: sp-3, name: Ly thuỷ tinh, category: do-gia-dung, price: 45000, stock: 2}
+      - {id: sp-4, name: Bình giữ nhiệt, category: do-gia-dung, price: 120000, stock: 0}
+  stock_shortage:
+    catalog:
+      - {id: sp-1, name: Bút bi xanh, category: van-phong, price: 5000, stock: 1}
+      - {id: sp-4, name: Bình giữ nhiệt, category: do-gia-dung, price: 120000, stock: 0}
+  single_product:
+    catalog:
+      - {id: sp-3, name: Ly thuỷ tinh, category: do-gia-dung, price: 45000, stock: 2}
+  isolation:
+    catalog:
+      - {id: sp-1, name: Bút bi xanh, category: van-phong, price: 5000, stock: 5}
+      - {id: sp-2, name: Bút chì gỗ, category: van-phong, price: 7000, stock: 3}
+      - {id: sp-3, name: Ly thuỷ tinh, category: do-gia-dung, price: 45000, stock: 2}
+      - {id: sp-4, name: Bình giữ nhiệt, category: do-gia-dung, price: 120000, stock: 0}

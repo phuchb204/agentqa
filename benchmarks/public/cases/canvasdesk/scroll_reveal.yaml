@@ -1,0 +1,85 @@
+schema_version: case/1
+logical_key: canvasdesk_scroll_reveal
+title: Cuộn tới cuối bảng và xác nhận bố cục
+goal: Cuộn vùng bảng tới nút xác nhận rồi xác nhận bố cục; trạng thái xác nhận hiển thị
+requirements: [scroll_reveal]
+
+source_defs:
+  scroll_reveal:
+    source_content_digest: 0015a40098c948d44ac2f929e4965ecd771340aac3f8fb0602cdbeaff858a45d
+    anchor: {type: section, value: scroll-reveal}
+    quote_digest: fe807affaa5b4be9b0bc42b3e5f81e69a669fe41a7a7a793e7085b3fda318b54
+    provenance: user
+
+postcondition_defs:
+  board_ready:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: board_canvas, locators: [{kind: css, value: "#board-canvas"}]}
+      expected: {kind: literal, value: true}
+  layout_confirmed:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: layout_status, locators: [{kind: css, value: "#layout-status"}]}
+      expected: {kind: literal, value: true}
+
+fixture_refs: [canvasdesk@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: canvasdesk.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: canvasdesk.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [board_ready]
+  - id: scroll_to_confirm
+    kind: action
+    operation: scroll
+    target: {intent: confirm_button, locators: [{kind: css, value: "#reveal-done"}]}
+    side_effect: read
+  - id: confirm_layout
+    kind: action
+    operation: click
+    target: {intent: confirm_button, locators: [{kind: css, value: "#reveal-done"}]}
+    side_effect: external_write
+    postconditions: [layout_confirmed]
+  - id: layout_result
+    kind: checkpoint
+    assertions:
+      - id: layout_status_visible
+        required: true
+        target: {intent: layout_status, locators: [{kind: css, value: "#layout-status"}]}
+        comparator: visible
+        expected: {kind: literal, value: true}
+        source_refs: [scroll_reveal]
+      - id: layout_status_text
+        required: true
+        target: {intent: layout_status, locators: [{kind: css, value: "#layout-status"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: Bố cục đã xác nhận}
+        source_refs: [scroll_reveal]
+
+completion:
+  required_nodes: [scroll_to_confirm, confirm_layout, layout_result]
+  required_assertions: [layout_status_visible, layout_status_text]

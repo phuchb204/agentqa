@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from agentqa.agent.browser.action_registry import build_locator
@@ -190,3 +192,19 @@ def origin_of_url(url: str) -> str:
     host = parts.hostname or ""
     port = f":{parts.port}" if parts.port else ""
     return f"{parts.scheme}://{host}{port}"
+
+
+BASELINE_REF_PATTERN = re.compile(r"^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9]+)?$")
+
+
+class DirectoryBaselineResolver:
+    def __init__(self, root: Path) -> None:
+        self._root = root.resolve()
+
+    def __call__(self, ref: str) -> bytes | None:
+        if not BASELINE_REF_PATTERN.match(ref):
+            return None
+        candidate = (self._root / f"{ref}.png").resolve()
+        if not candidate.is_relative_to(self._root) or not candidate.is_file():
+            return None
+        return candidate.read_bytes()

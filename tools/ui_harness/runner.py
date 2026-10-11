@@ -207,7 +207,7 @@ class SeedResult:
 
 class UiHarness:
     def __init__(self, *, scenario: str = "authoring", build_web: bool = True) -> None:
-        if scenario not in ("authoring", "live", "healing", "reporting", "admin"):
+        if scenario not in ("authoring", "live", "healing", "reporting", "admin", "experiments"):
             raise HarnessError(f"scenario không hỗ trợ: {scenario}")
         self.scenario = scenario
         self.build_web = build_web
@@ -232,6 +232,7 @@ class UiHarness:
         self.dsn_by_role: dict[str, str] = {}
         self.runtime: PlatformRuntime | None = None
         self.log_lines: list[str] = []
+        self.seeded_case_revision: UUID | None = None
 
     def log(self, message: str) -> None:
         line = f"[{datetime.now(UTC).isoformat()}] {message}"
@@ -564,6 +565,68 @@ class UiHarness:
 
         return _run_db(query())
 
+    def seed_experiment_revision(self, *, logical_key: str, content: dict) -> str:
+        assert self.seed is not None
+
+        async def create() -> str:
+            from agentqa.platform.experiments import ExperimentService
+
+            engine = create_async_engine(self.dsn_by_role[ROLE_API])
+            try:
+                service = ExperimentService(engine)
+                view = await service.create_revision(
+                    workspace_id=self.seed.workspace_id,
+                    principal_id=self.seed.user_id,
+                    actor="ui-harness",
+                    logical_key=logical_key,
+                    content=content,
+                )
+                return str(view.revision_id)
+            finally:
+                await engine.dispose()
+
+        return _run_db(create())
+
+    def execute_experiment(self, revision_id: str) -> dict[str, Any]:
+        assert self.seed is not None
+        harness = self
+
+        class _HarnessSlotRunner:
+            async def run_slot(self, slot, arm_payload: dict[str, Any]) -> dict[str, Any]:
+                if arm_payload.get("baseline") and harness.seeded_case_revision is not None:
+                    run_id = await asyncio.to_thread(harness.run_replay, harness.seeded_case_revision)
+                    state = await asyncio.to_thread(harness.wait_for_run, run_id)
+                    return {
+                        "status": "completed",
+                        "run_id": str(run_id),
+                        "product": {"verdict": state.get("verdict"), "gate": state.get("gate")},
+                        "oracle": {
+                            "task_outcome": "unscorable",
+                            "unscorable_reason": "no_oracle_record",
+                            "counters": {},
+                        },
+                        "gate": {"result": state.get("gate")},
+                        "usage": {"calls": 0, "input_tokens": 0, "output_tokens": 0, "wall_time_seconds": 0.0},
+                    }
+                return {"status": "blocked", "blocked_reason": "runner_unavailable"}
+
+        async def execute() -> dict[str, Any]:
+            from agentqa.platform.experiments import ExperimentService
+
+            engine = create_async_engine(self.dsn_by_role[ROLE_API])
+            try:
+                service = ExperimentService(engine)
+                return await service.execute(
+                    workspace_id=self.seed.workspace_id,
+                    principal_id=self.seed.user_id,
+                    revision_id=UUID(revision_id),
+                    slot_runner=_HarnessSlotRunner(),
+                )
+            finally:
+                await engine.dispose()
+
+        return _run_db(execute())
+
     async def _worker_loop(self) -> None:
         assert self.seed is not None
         assert self.supervisor is not None
@@ -885,6 +948,12 @@ def run_scenario(*, scenario: str = "authoring", build_web: bool = True) -> Harn
                 from tools.ui_harness.scenario_admin import drive_admin_flow
 
                 checks, _runs = _run_async(drive_admin_flow(harness))
+                draft_run = {}
+                replay_run = None
+            elif scenario == "experiments":
+                from tools.ui_harness.scenario_experiments import drive_experiments_flow
+
+                checks, _runs = _run_async(drive_experiments_flow(harness))
                 draft_run = {}
                 replay_run = None
             else:

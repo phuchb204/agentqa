@@ -1,0 +1,118 @@
+schema_version: case/1
+logical_key: canvasdesk_theme_visual
+title: Đổi nền bảng vẽ và so khớp thị giác
+goal: Đổi nền bảng sang trạng thái tối; pixel bảng vẽ khớp baseline đã đóng băng
+requirements: [theme_toggle]
+
+source_defs:
+  theme_toggle:
+    source_content_digest: 0015a40098c948d44ac2f929e4965ecd771340aac3f8fb0602cdbeaff858a45d
+    anchor: {type: section, value: theme-toggle}
+    quote_digest: 23264b310527f9b3760e145f57bab8908f818297af2d63815fa71b5d4f30e2db
+    provenance: user
+
+postcondition_defs:
+  board_ready:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: board_canvas, locators: [{kind: css, value: "#board-canvas"}]}
+      expected: {kind: literal, value: true}
+  theme_dark:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: attribute_equals
+      target:
+        intent: board_stage
+        locators: [{kind: css, value: "#board-stage"}]
+        attributes: {data-theme: dark}
+      expected: {kind: literal, value: dark}
+
+fixture_refs: [canvasdesk@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: canvasdesk.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: canvasdesk.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [board_ready]
+  - id: verify_light
+    kind: checkpoint
+    assertions:
+      - id: light_theme_attr
+        required: true
+        target:
+          intent: board_stage
+          locators: [{kind: css, value: "#board-stage"}]
+          attributes: {data-theme: light}
+        comparator: attribute_equals
+        expected: {kind: literal, value: light}
+        source_refs: [theme_toggle]
+      - id: light_baseline
+        required: true
+        comparator: visual_match
+        expected: {kind: literal, value: true}
+        visual:
+          baseline_ref: canvasdesk_default_light
+          profile_version: visual/1
+          max_diff_ratio: 0.0
+          masks:
+            - {x: 0, y: 0, width: 1280, height: 40}
+            - {x: 0, y: 252, width: 1280, height: 548}
+          viewport: {width: 1280, height: 800}
+        source_refs: [theme_toggle]
+  - id: toggle_theme
+    kind: action
+    operation: click
+    target: {intent: theme_toggle, role: button, name: Đổi nền}
+    side_effect: external_write
+    postconditions: [theme_dark]
+  - id: dark_result
+    kind: checkpoint
+    assertions:
+      - id: dark_theme_attr
+        required: true
+        target:
+          intent: board_stage
+          locators: [{kind: css, value: "#board-stage"}]
+          attributes: {data-theme: dark}
+        comparator: attribute_equals
+        expected: {kind: literal, value: dark}
+        source_refs: [theme_toggle]
+      - id: dark_baseline
+        required: true
+        comparator: visual_match
+        expected: {kind: literal, value: true}
+        visual:
+          baseline_ref: canvasdesk_default_dark
+          profile_version: visual/1
+          max_diff_ratio: 0.0
+          masks:
+            - {x: 0, y: 0, width: 1280, height: 40}
+            - {x: 0, y: 252, width: 1280, height: 548}
+          viewport: {width: 1280, height: 800}
+        source_refs: [theme_toggle]
+
+completion:
+  required_nodes: [verify_light, toggle_theme, dark_result]
+  required_assertions: [light_baseline, dark_theme_attr, dark_baseline]

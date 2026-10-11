@@ -1,0 +1,67 @@
+schema_version: case/1
+logical_key: shopflow_stock_rejected_static
+title: Baseline tĩnh — thêm hàng hết kho bị từ chối
+goal: Plan tĩnh thử thêm sản phẩm hết kho và xác nhận bị từ chối
+requirements: [stock_reject]
+
+source_defs:
+  stock_reject:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: stock-reject}
+    quote_digest: e653836512406a3a033cc57aa09fcd75771a63e5a7b5c7f6acfa79947002d29a
+    provenance: user
+
+fixture_refs: [shopflow@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: shopflow.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: shopflow.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+  - id: keyword_input
+    kind: action
+    operation: fill
+    target: {intent: search_input, role: textbox, name: Tìm sản phẩm}
+    value: {kind: literal, value: Bình}
+    side_effect: reversible
+  - id: run_search
+    kind: action
+    operation: click
+    target: {intent: search_submit, role: button, name: Tìm}
+    side_effect: external_write
+  - id: add_out_of_stock
+    kind: action
+    operation: click
+    target: {intent: add_to_cart, role: button, name: Thêm Bình giữ nhiệt vào giỏ}
+    side_effect: external_write
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: stock_error_visible
+        required: true
+        target: {intent: cart_error, locators: [{kind: css, value: ".cart-error"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: "Không thể thêm: hết hàng"}
+        source_refs: [stock_reject]
+
+completion:
+  required_nodes: [add_out_of_stock, result]
+  required_assertions: [stock_error_visible]

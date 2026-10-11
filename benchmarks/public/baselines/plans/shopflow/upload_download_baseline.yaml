@@ -1,0 +1,81 @@
+schema_version: case/1
+logical_key: shopflow_upload_download_static
+title: Baseline tĩnh — gửi tệp và tải hoá đơn
+goal: Plan tĩnh gửi tệp đính kèm rồi tải hoá đơn với tên xác định
+requirements: [upload_invoice]
+
+source_defs:
+  upload_invoice:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: upload-invoice}
+    quote_digest: 9bf530d9ef9b8e9b001fca96782ed212debe56a07543319dba38d77ad7491f63
+    provenance: user
+
+fixture_refs: [shopflow@1]
+
+required_capabilities: [download, file_upload]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: shopflow.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: shopflow.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+  - id: open_lab
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /lab}
+    side_effect: read
+  - id: upload_file
+    kind: action
+    operation: upload
+    target: {intent: upload_input, locators: [{kind: css, value: "#lab-file"}]}
+    value: {kind: literal, value: mau-don.txt}
+    side_effect: reversible
+  - id: submit_upload
+    kind: action
+    operation: click
+    target: {intent: upload_submit, role: button, name: Gửi tệp}
+    side_effect: external_write
+  - id: start_download
+    kind: action
+    operation: click
+    target: {intent: invoice_link, role: link, name: Tải hoá đơn}
+    side_effect: read
+  - id: await_download
+    kind: action
+    operation: expect_download
+    side_effect: read
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: invoice_downloaded
+        required: true
+        comparator: download_matches
+        expected: {kind: literal, value: true}
+        download:
+          filename_contains: hoa-don
+          media_type: text/plain
+          minimum_count: 1
+        source_refs: [upload_invoice]
+
+completion:
+  required_nodes: [upload_file, await_download, result]
+  required_assertions: [invoice_downloaded]

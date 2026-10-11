@@ -10,12 +10,14 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agentqa.contracts.case import CaseContent
+from agentqa.contracts.models import ModelCallOutcome
 from agentqa.contracts.runs import TERMINAL_STATUSES, ExecutionStatus, Verdict
 from agentqa.platform.queue import JobQueue
 from agentqa.platform.runs.coordinator import ExecutionOutcome, ExecutionSpec
 from agentqa.platform.storage import tables
 from agentqa.platform.storage.database import create_session_factory
 from agentqa.platform.storage.scope import set_scope
+from agentqa.platform.usage.service import UsageLedgerService
 
 TERMINAL_VALUES = {item.value for item in TERMINAL_STATUSES}
 
@@ -143,6 +145,7 @@ class RunWorker:
             if not draft_case:
                 raise ExecutionLoadError("draft case không tồn tại trong snapshot")
             case = CaseContent.model_validate(draft_case)
+        fixture_seed = environment_content.get("fixture_seed")
         return ExecutionSpec(
             workspace_id=execution.workspace_id,
             principal_id=self.principal_id,
@@ -154,6 +157,7 @@ class RunWorker:
             target_base_url=str(environment_content["target_base_url"]),
             fixture_ref=str(environment_content["fixture_ref"]),
             namespace=str(environment_content["namespace"]),
+            fixture_seed=str(fixture_seed) if fixture_seed else None,
             parameters={**dict(environment_content.get("parameters", {})), **dict(execution.parameters or {})},
             gate_profile=str(snapshot.content.get("gate_profile", "strict")),
             fence_epoch=int(attempt.fence_epoch) if attempt is not None else 1,
@@ -297,6 +301,36 @@ class RunWorker:
                         recorded_at=record.recorded_at,
                     )
                 )
+            usage = UsageLedgerService()
+            for record in outcome.model_calls:
+                call_id = await usage.start_call(
+                    session,
+                    workspace_id=spec.workspace_id,
+                    route=record.route,
+                    purpose=record.purpose,
+                    requested_model=record.requested_model,
+                    run_id=spec.run_id,
+                    execution_id=spec.execution_id,
+                    group_id=record.group_id,
+                    attempt=record.attempt,
+                )
+                if record.outcome == ModelCallOutcome.UNKNOWN:
+                    await usage.mark_unknown(
+                        session,
+                        workspace_id=spec.workspace_id,
+                        call_id=call_id,
+                        reason=record.error_code.value if record.error_code else "unknown",
+                    )
+                else:
+                    await usage.settle_call(
+                        session,
+                        workspace_id=spec.workspace_id,
+                        call_id=call_id,
+                        outcome=record.outcome,
+                        usage=record.usage,
+                        resolved_model=record.resolved_model,
+                        error_code=record.error_code.value if record.error_code else None,
+                    )
             skipped: list[tuple[UUID, str]] = []
             if outcome.status == ExecutionStatus.FAILED.value:
                 skipped = await self._skip_pending_executions(session, spec)

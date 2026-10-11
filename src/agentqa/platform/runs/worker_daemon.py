@@ -145,6 +145,7 @@ class RemoteCoordinator:
                 "target_base_url": spec.target_base_url,
                 "fixture_ref": spec.fixture_ref,
                 "namespace": spec.namespace,
+                "fixture_seed": spec.fixture_seed,
                 "parameters": spec.parameters,
                 "gate_profile": spec.gate_profile,
                 "fence_epoch": spec.fence_epoch,

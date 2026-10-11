@@ -9,9 +9,11 @@ from agentqa.platform.api.artifacts import router as artifacts_router
 from agentqa.platform.api.auth import router as auth_router
 from agentqa.platform.api.authoring import router as authoring_router
 from agentqa.platform.api.bundles import router as bundles_router
+from agentqa.platform.api.calibrations import router as calibrations_router
 from agentqa.platform.api.controls import router as controls_router
 from agentqa.platform.api.error_models import ApiError, ErrorResponse, FieldErrorModel, HealthResponse
 from agentqa.platform.api.events import router as events_router
+from agentqa.platform.api.experiments import router as experiments_router
 from agentqa.platform.api.exploration import router as exploration_router
 from agentqa.platform.api.health import router as health_router
 from agentqa.platform.api.reports import router as reports_router
@@ -134,6 +136,8 @@ def create_application(runtime: PlatformRuntime | None = None) -> FastAPI:
     app.include_router(artifacts_router)
     app.include_router(streams_router)
     app.include_router(reports_router)
+    app.include_router(calibrations_router)
+    app.include_router(experiments_router)
     app.include_router(schedules_router)
     app.include_router(settings_router)
     app.include_router(health_router)

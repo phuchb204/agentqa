@@ -167,6 +167,7 @@ class SupervisorServer:
                     target_base_url=payload["target_base_url"],
                     fixture_ref=payload["fixture_ref"],
                     namespace=payload["namespace"],
+                    fixture_seed=payload.get("fixture_seed"),
                     parameters=dict(payload.get("parameters", {})),
                     gate_profile=payload.get("gate_profile", "strict"),
                     fence_epoch=int(payload.get("fence_epoch", 1)),

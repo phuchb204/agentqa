@@ -19,6 +19,7 @@ from agentqa.contracts.case import ActionNode, CaseContent, CheckpointNode
 from agentqa.contracts.errors import AgentQAValidationError
 from agentqa.contracts.healing import HealingActor, HealingDecision, HealingRecord
 from agentqa.contracts.identity import TargetDescriptor
+from agentqa.contracts.models import ModelCallRecord
 from agentqa.contracts.observation import Modality, Observation, RedactionStatus
 from agentqa.contracts.policies import PolicyKind, RunMode, validate_mode_policy_modality
 from agentqa.contracts.runs import ExecutionStatus
@@ -29,10 +30,12 @@ from agentqa.contracts.verification import (
     CheckpointEvaluationRequest,
     EvidenceStatus,
 )
+from agentqa.models.usage import CallLedger
 from agentqa.platform.fixtures import FixtureRegistry
 from agentqa.platform.runs.composition import (
     AgentModels,
     bundle_from_replay,
+    ledgered_composition,
     run_agent_bundle,
 )
 from agentqa.platform.runs.facts import capture_facts
@@ -66,6 +69,7 @@ class ExecutionSpec:
     target_base_url: str
     fixture_ref: str
     namespace: str
+    fixture_seed: str | None = None
     parameters: dict[str, str] = field(default_factory=dict)
     gate_profile: str = "strict"
     fence_epoch: int = 1
@@ -98,6 +102,7 @@ class ExecutionOutcome:
     degraded: bool = False
     policy_versions: list[str] = field(default_factory=list)
     healing_records: list[HealingRecord] = field(default_factory=list)
+    model_calls: list[ModelCallRecord] = field(default_factory=list)
 
 
 class BridgedRunEventRecorder:
@@ -244,6 +249,7 @@ class _CoordinatorHooks:
             captures=self.captures,
             parameters=dict(self._spec.parameters),
             read_port=self._coordinator.read_port,
+            baseline_resolver=self._coordinator.baseline_resolver,
         )
         outcome = evaluate_assertion(spec, facts)
         satisfied = outcome.status == AssertionStatus.PASSED
@@ -440,6 +446,7 @@ class _CoordinatorHooks:
             captures=self.captures,
             parameters=dict(self._spec.parameters),
             read_port=self._coordinator.read_port,
+            baseline_resolver=self._coordinator.baseline_resolver,
         )
         overrides = await self._recover_evidence_targets(node, initial_facts, observation)
         facts = await capture_facts(
@@ -451,6 +458,7 @@ class _CoordinatorHooks:
             captures=self.captures,
             parameters=dict(self._spec.parameters),
             read_port=self._coordinator.read_port,
+            baseline_resolver=self._coordinator.baseline_resolver,
         )
         request = CheckpointEvaluationRequest(
             run_id=self._spec.run_id,
@@ -505,6 +513,7 @@ class RunCoordinator:
         agent_models: AgentModels | None = None,
         taint: Any = None,
         fixture_runs: Any = None,
+        baseline_resolver: Callable[[str], bytes | None] | None = None,
     ) -> None:
         self.runtime = runtime
         self.contexts = contexts
@@ -518,6 +527,7 @@ class RunCoordinator:
         self._active_spec: ExecutionSpec | None = None
         self.agent_models = agent_models or AgentModels()
         self.taint = taint
+        self.baseline_resolver = baseline_resolver
         self.active_healer: Healer | None = None
 
     async def apply_control(self, control_id: UUID) -> dict[str, Any]:
@@ -603,7 +613,7 @@ class RunCoordinator:
                 [],
                 [],
             )
-        fixture_receipt = self.fixtures.prepare(spec.fixture_ref, spec.namespace)
+        fixture_receipt = self.fixtures.prepare(spec.fixture_ref, spec.namespace, spec.fixture_seed)
         if self.fixture_runs is not None:
             await self.fixture_runs.record_lifecycle(
                 workspace_id=spec.workspace_id,
@@ -635,14 +645,16 @@ class RunCoordinator:
         )
         await self.contexts.open(context_key)
         hooks = _CoordinatorHooks(self, spec, session_key, context_key)
-        self.active_healer = self._build_healer(spec)
+        ledger = CallLedger()
+        models = ledgered_composition(self.agent_models, ledger)
+        self.active_healer = self._build_healer(spec, models)
         if agent_policy:
             bundle = await run_agent_bundle(
                 self,
                 spec,
                 hooks,
                 case=case,
-                composition=self.agent_models,
+                composition=models,
                 taint=self.taint,
             )
         else:
@@ -719,7 +731,7 @@ class RunCoordinator:
             execution_id=spec.execution_id,
             event_type="fixture.probed",
             actor=spec.actor,
-            payload={"probe": outcome_probe or {}},
+            payload={"probe": outcome_probe or {}, "namespace": spec.namespace, "fixture_ref": spec.fixture_ref},
         )
         cleanup_failed = False
         if self.fixture_runs is not None:
@@ -786,13 +798,14 @@ class RunCoordinator:
             degraded=bundle.degraded,
             policy_versions=list(bundle.policy_versions),
             healing_records=healing_records,
+            model_calls=list(ledger.records),
         )
         return outcome
 
-    def _build_healer(self, spec: ExecutionSpec) -> Healer | None:
+    def _build_healer(self, spec: ExecutionSpec, models: AgentModels) -> Healer | None:
         if spec.policy != "replay_healing" or spec.healing_profile is None:
             return None
-        return build_healer(spec.healing_profile, decision=self.agent_models.decision)
+        return build_healer(spec.healing_profile, decision=models.decision)
 
     @staticmethod
     def _healing_guards_ok(records: list[HealingRecord]) -> bool:
@@ -866,6 +879,7 @@ def outcome_to_dict(outcome: ExecutionOutcome) -> dict[str, Any]:
         "degraded": outcome.degraded,
         "policy_versions": list(outcome.policy_versions),
         "healing_records": [record.model_dump(mode="json") for record in outcome.healing_records],
+        "model_calls": [record.model_dump(mode="json") for record in outcome.model_calls],
     }
 
 
@@ -895,6 +909,7 @@ def outcome_from_dict(data: dict[str, Any]) -> ExecutionOutcome:
         degraded=bool(data.get("degraded", False)),
         policy_versions=list(data.get("policy_versions", [])),
         healing_records=[HealingRecord.model_validate(item) for item in data.get("healing_records", [])],
+        model_calls=[ModelCallRecord.model_validate(item) for item in data.get("model_calls", [])],
     )
 
 

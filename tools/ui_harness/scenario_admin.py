@@ -12,7 +12,7 @@ CANARY = "sk-ui-canary-never-render"
 
 
 async def drive_admin_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict]:
-    from playwright.async_api import async_playwright
+    from playwright.async_api import async_playwright, expect
 
     assert harness.seed is not None
     checks: list[HarnessCheck] = []
@@ -53,6 +53,7 @@ async def drive_admin_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict
             await page.get_by_label("Giá trị mới").fill(CANARY)
             await page.get_by_role("button", name="Rotate").click()
             await page.get_by_text("Đã tạo version mới").wait_for()
+            await expect(page.get_by_test_id("settings-references")).to_contain_text("v2", timeout=15000)
             references_text = await page.get_by_test_id("settings-references").inner_text()
             if "v2" not in references_text:
                 raise HarnessError("rotation không tạo version v2")

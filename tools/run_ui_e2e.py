@@ -19,7 +19,11 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(prog="run_ui_e2e", description="UI E2E harness với API/DB/browser thật")
     parser.add_argument("--models", default="fake", choices=["fake"], help="model I/O luôn là fake trong harness")
-    parser.add_argument("--scenario", default="authoring", choices=["authoring", "live", "healing", "reporting"])
+    parser.add_argument(
+        "--scenario",
+        default="authoring",
+        choices=["authoring", "live", "healing", "reporting", "experiments"],
+    )
     parser.add_argument("--skip-build", action="store_true", help="không build lại web app trước khi chạy")
     args = parser.parse_args(argv)
 

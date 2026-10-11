@@ -52,6 +52,26 @@ class ParsedDecision:
     rationale: str
 
 
+def _extract_json_object(raw_text: str) -> dict[str, Any] | None:
+    text = raw_text.strip()
+    if not text:
+        return None
+    if text.startswith("```"):
+        lines = [line for line in text.splitlines() if not line.strip().startswith("```")]
+        text = "\n".join(lines).strip()
+    start = text.find("{")
+    while start != -1:
+        try:
+            payload, _ = json.JSONDecoder().raw_decode(text[start:])
+        except json.JSONDecodeError:
+            start = text.find("{", start + 1)
+            continue
+        if isinstance(payload, dict):
+            return payload
+        start = text.find("{", start + 1)
+    return None
+
+
 def parse_agent_decision(payload: dict[str, Any]) -> ParsedDecision:
     if not isinstance(payload, dict):
         raise ProposalParseError(ErrorCode.PROVIDER_SCHEMA, "Payload không phải object")
@@ -164,6 +184,8 @@ class LLMPolicy:
         return self._to_outcome(parsed, observation)
 
     def _parse(self, structured: dict | None, raw_text: str) -> ParsedDecision:
+        if structured is None:
+            structured = _extract_json_object(raw_text)
         if structured is None:
             raise ProposalParseError(ErrorCode.PROVIDER_SCHEMA, "Model không trả JSON object")
         return parse_agent_decision(structured)
@@ -302,6 +324,7 @@ class LLMPolicy:
                     "id": subgoal.subgoal_id,
                     "goal": subgoal.goal,
                     "requirements": list(subgoal.requirement_refs),
+                    **({"value_hint": subgoal.value_hint} if subgoal.value_hint else {}),
                 }
                 for subgoal in plan.subgoals
             ],
@@ -334,7 +357,9 @@ class LLMPolicy:
                             text=(
                                 "Bạn là policy chọn action cho browser agent. "
                                 "Chỉ trả một JSON object theo response_schema; không giải thích ngoài JSON. "
-                                "Không được yêu cầu chạy code hay tool ngoài registry."
+                                "Không được yêu cầu chạy code hay tool ngoài registry. "
+                                "Khi trang trống hoặc subgoal hiện tại có value_hint, đề xuất operation tương ứng "
+                                "với value literal/value_hint thay vì need_more_context."
                             )
                         )
                     ],

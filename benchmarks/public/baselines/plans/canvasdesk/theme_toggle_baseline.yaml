@@ -1,0 +1,59 @@
+schema_version: case/1
+logical_key: canvasdesk_theme_toggle_static
+title: Baseline tĩnh — đổi nền bảng vẽ
+goal: Plan tĩnh đổi nền bảng sang trạng thái tối và xác nhận thuộc tính
+requirements: [theme_toggle]
+
+source_defs:
+  theme_toggle:
+    source_content_digest: 0015a40098c948d44ac2f929e4965ecd771340aac3f8fb0602cdbeaff858a45d
+    anchor: {type: section, value: theme-toggle}
+    quote_digest: 23264b310527f9b3760e145f57bab8908f818297af2d63815fa71b5d4f30e2db
+    provenance: user
+
+fixture_refs: [canvasdesk@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: canvasdesk.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: canvasdesk.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+  - id: toggle_theme
+    kind: action
+    operation: click
+    target: {intent: theme_toggle, role: button, name: Đổi nền}
+    side_effect: external_write
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: dark_theme_attr
+        required: true
+        target:
+          intent: board_stage
+          locators: [{kind: css, value: "#board-stage"}]
+          attributes: {data-theme: dark}
+        comparator: attribute_equals
+        expected: {kind: literal, value: dark}
+        source_refs: [theme_toggle]
+
+completion:
+  required_nodes: [toggle_theme, result]
+  required_assertions: [dark_theme_attr]

@@ -32,6 +32,11 @@ class PreparePayload(StrictPayload):
     duplicate_policy: Literal["allow", "reject"] = "allow"
 
 
+class MutationPayload(StrictPayload):
+    operator: str
+    params: dict[str, Any] = {}
+
+
 def _page(title: str, body: str, refresh_seconds: int | None = None) -> HTMLResponse:
     refresh = ""
     if refresh_seconds is not None:
@@ -62,13 +67,19 @@ def _login_page(namespace: str, error: str | None = None) -> HTMLResponse:
 
 def _render_items(namespace: str, store: TaskboardStore) -> str:
     state = store.state(namespace)
+    mutation = state.get("mutation") or {}
+    patch = mutation.get("patch") or {}
+    delete_label = "Xoá"
+    if mutation.get("operator") == "rename_label":
+        delete_label = str(patch.get("to", delete_label))
     rows = []
     for item in state["items"]:
         item_id = html.escape(item["id"], quote=True)
+        rendered_id = item_id
         label = html.escape(item["label"])
         status = "Đã xong" if item["done"] else "Chưa xong"
         rows.append(
-            f'<li data-item-id="{item_id}"><span class="item-label">{label}</span> '
+            f'<li data-item-id="{rendered_id}"><span class="item-label">{label}</span> '
             f'<span class="item-status">{status}</span>'
             f'<form method="post" action="/{namespace}/tasks/{item_id}/toggle">'
             '<button type="submit">Đổi trạng thái</button></form>'
@@ -77,7 +88,7 @@ def _render_items(namespace: str, store: TaskboardStore) -> str:
             f'<input id="relabel-{item_id}" name="label" type="text">'
             '<button type="submit">Đổi nhãn</button></form>'
             f'<form method="post" action="/{namespace}/tasks/{item_id}/delete">'
-            f'<button type="submit" data-item-id="{item_id}">Xoá</button></form></li>'
+            f'<button type="submit" data-item-id="{item_id}">{html.escape(delete_label)}</button></form></li>'
         )
     listing = '<ul id="task-list">' + "".join(rows) + "</ul>"
     return (
@@ -242,7 +253,9 @@ def create_taskboard_app(control_token: str, store: TaskboardStore | None = None
             return RedirectResponse(url=f"/{namespace}/login", status_code=303)
         if action == "async":
             job = taskboard.submit_async(namespace, label)
-            asyncio.get_running_loop().create_task(_complete_async(namespace, job.id))
+            mutation = taskboard.mutation(namespace) or {}
+            delay = float((mutation.get("patch") or {}).get("seconds", ASYNC_DELAY_SECONDS))
+            asyncio.get_running_loop().create_task(_complete_async(namespace, job.id, delay))
             return _jobs_page(namespace, job.id, taskboard)
         if label.startswith("slow-"):
             await asyncio.sleep(0.8)
@@ -252,8 +265,8 @@ def create_taskboard_app(control_token: str, store: TaskboardStore | None = None
             return _page("Danh sách việc", f'<p class="form-error">Nhãn không hợp lệ hoặc đã tồn tại</p>{body}')
         return _page("Danh sách việc", _render_items(namespace, taskboard))
 
-    async def _complete_async(namespace: str, job_id: str) -> None:
-        await asyncio.sleep(ASYNC_DELAY_SECONDS)
+    async def _complete_async(namespace: str, job_id: str, delay: float = ASYNC_DELAY_SECONDS) -> None:
+        await asyncio.sleep(max(0.0, delay))
         taskboard.settle_async(namespace, job_id)
 
     @app.get("/{namespace}/jobs/{job_id}", response_class=HTMLResponse)
@@ -313,6 +326,29 @@ def create_taskboard_app(control_token: str, store: TaskboardStore | None = None
     def control_version(x_taskboard_control: Annotated[str | None, Header()] = None) -> JSONResponse:
         require_control(x_taskboard_control)
         return JSONResponse(content={"app": "taskboard", "version": APP_VERSION})
+
+    @app.post("/_control/namespaces/{namespace}/mutate")
+    def control_mutate(
+        namespace: str,
+        payload: Annotated[MutationPayload, Body()],
+        x_taskboard_control: Annotated[str | None, Header()] = None,
+    ) -> JSONResponse:
+        require_control(x_taskboard_control)
+        missing = namespace_guard(namespace)
+        if missing is not None:
+            return missing
+        result = taskboard.apply_mutation(namespace, payload.operator, payload.params)
+        return JSONResponse(content=result)
+
+    @app.post("/_control/namespaces/{namespace}/mutation-intent")
+    def control_mutation_intent(
+        namespace: str,
+        payload: Annotated[MutationPayload, Body()],
+        x_taskboard_control: Annotated[str | None, Header()] = None,
+    ) -> JSONResponse:
+        require_control(x_taskboard_control)
+        result = taskboard.arm_mutation(namespace, payload.operator, payload.params)
+        return JSONResponse(content=result)
 
     @app.post("/_control/namespaces/{namespace}/prepare")
     def control_prepare(

@@ -239,6 +239,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/calibrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_calibrations_api_v1_workspaces__workspace_id__calibrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/cases": {
         parameters: {
             query?: never;
@@ -409,6 +425,54 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["rotate_credential_reference_api_v1_workspaces__workspace_id__credential_references__credential_ref__rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/experiments/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_revisions_api_v1_workspaces__workspace_id__experiments_revisions_get"];
+        put?: never;
+        post: operations["create_revision_api_v1_workspaces__workspace_id__experiments_revisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/experiments/revisions/{revision_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["execute_revision_api_v1_workspaces__workspace_id__experiments_revisions__revision_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/experiments/revisions/{revision_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["revision_results_api_v1_workspaces__workspace_id__experiments_revisions__revision_id__results_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1155,6 +1219,22 @@ export interface components {
             }[];
             schema_version: string;
         };
+        CalibrationListResponse: {
+            items: components["schemas"]["CalibrationProfileStatus"][];
+        };
+        CalibrationProfileStatus: {
+            bound_upper?: number | null;
+            evidence?: string | null;
+            groups?: number | null;
+            manifest_digest: string;
+            production_ready: boolean;
+            profile_id: string;
+            reason?: string | null;
+            receipt_path?: string | null;
+            sample_units?: number | null;
+            status: string;
+            version: string;
+        };
         ComparisonAssertionResponse: {
             a_expected?: string | null;
             a_observed?: string | null;
@@ -1332,6 +1412,14 @@ export interface components {
             message: string;
             request_id?: string | null;
             retryable: boolean;
+        };
+        ExecuteResponse: {
+            attempt_no: number;
+            blocked: number;
+            completed: number;
+            errors: number;
+            revision_id: string;
+            slots: number;
         };
         ExecutionDetailResponse: {
             assertions: components["schemas"]["AssertionDetailResponse"][];
@@ -1572,20 +1660,14 @@ export interface components {
             report_id: string;
             run_id: string;
         };
-        RevisionResponse: {
-            archived_at?: string | null;
-            author: string;
+        RevisionCreateRequest: {
             content: {
                 [key: string]: unknown;
             };
-            content_digest: string;
-            entity_id: string;
-            lifecycle: string;
-            promoted_at?: string | null;
-            promoted_by?: string | null;
-            revision_id: string;
-            revision_no: number;
-            supersedes?: string | null;
+            logical_key: string;
+        };
+        RevisionListResponse: {
+            items: components["schemas"]["agentqa__platform__api__experiments__RevisionResponse"][];
         };
         Role: "owner" | "editor" | "runner" | "viewer";
         RunDetailResponse: {
@@ -1786,6 +1868,28 @@ export interface components {
             id: string;
             name: string;
             slug: string;
+        };
+        agentqa__platform__api__experiments__RevisionResponse: {
+            content_digest: string;
+            experiment_id: string;
+            logical_key: string;
+            revision_id: string;
+            revision_no: number;
+        };
+        agentqa__platform__api__revisions__RevisionResponse: {
+            archived_at?: string | null;
+            author: string;
+            content: {
+                [key: string]: unknown;
+            };
+            content_digest: string;
+            entity_id: string;
+            lifecycle: string;
+            promoted_at?: string | null;
+            promoted_by?: string | null;
+            revision_id: string;
+            revision_no: number;
+            supersedes?: string | null;
         };
     };
     responses: never;
@@ -2192,7 +2296,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RevisionResponse"][];
+                    "application/json": components["schemas"]["agentqa__platform__api__revisions__RevisionResponse"][];
                 };
             };
             422: {
@@ -2320,6 +2424,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_calibrations_api_v1_workspaces__workspace_id__calibrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationListResponse"];
                 };
             };
             422: {
@@ -2610,7 +2743,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RevisionResponse"][];
+                    "application/json": components["schemas"]["agentqa__platform__api__revisions__RevisionResponse"][];
                 };
             };
             422: {
@@ -2641,7 +2774,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RevisionResponse"];
+                    "application/json": components["schemas"]["agentqa__platform__api__revisions__RevisionResponse"];
                 };
             };
             422: {
@@ -2772,6 +2905,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CredentialVersionResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_revisions_api_v1_workspaces__workspace_id__experiments_revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionListResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_revision_api_v1_workspaces__workspace_id__experiments_revisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionCreateRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["agentqa__platform__api__experiments__RevisionResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_revision_api_v1_workspaces__workspace_id__experiments_revisions__revision_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecuteResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revision_results_api_v1_workspaces__workspace_id__experiments_revisions__revision_id__results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             422: {
@@ -4254,7 +4511,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RevisionResponse"][];
+                    "application/json": components["schemas"]["agentqa__platform__api__revisions__RevisionResponse"][];
                 };
             };
             422: {

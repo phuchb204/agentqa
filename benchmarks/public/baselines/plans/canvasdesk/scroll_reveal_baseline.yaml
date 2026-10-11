@@ -1,0 +1,61 @@
+schema_version: case/1
+logical_key: canvasdesk_scroll_reveal_static
+title: Baseline tĩnh — cuộn và xác nhận bố cục
+goal: Plan tĩnh cuộn tới nút xác nhận bố cục rồi xác nhận
+requirements: [scroll_reveal]
+
+source_defs:
+  scroll_reveal:
+    source_content_digest: 0015a40098c948d44ac2f929e4965ecd771340aac3f8fb0602cdbeaff858a45d
+    anchor: {type: section, value: scroll-reveal}
+    quote_digest: fe807affaa5b4be9b0bc42b3e5f81e69a669fe41a7a7a793e7085b3fda318b54
+    provenance: user
+
+fixture_refs: [canvasdesk@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: canvasdesk.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: canvasdesk.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+  - id: scroll_to_confirm
+    kind: action
+    operation: scroll
+    target: {intent: confirm_button, locators: [{kind: css, value: "#reveal-done"}]}
+    side_effect: read
+  - id: confirm_layout
+    kind: action
+    operation: click
+    target: {intent: confirm_button, locators: [{kind: css, value: "#reveal-done"}]}
+    side_effect: external_write
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: layout_status_text
+        required: true
+        target: {intent: layout_status, locators: [{kind: css, value: "#layout-status"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: Bố cục đã xác nhận}
+        source_refs: [scroll_reveal]
+
+completion:
+  required_nodes: [scroll_to_confirm, confirm_layout, result]
+  required_assertions: [layout_status_text]

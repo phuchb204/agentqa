@@ -1,0 +1,116 @@
+schema_version: case/1
+logical_key: shopflow_stock_rejected
+title: Từ chối thêm sản phẩm hết hàng và thanh toán giỏ trống
+goal: Thao tác vượt tồn kho và thanh toán khi giỏ trống bị từ chối; giỏ hàng không đổi
+requirements: [stock_reject]
+
+source_defs:
+  stock_reject:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: stock-reject}
+    quote_digest: e653836512406a3a033cc57aa09fcd75771a63e5a7b5c7f6acfa79947002d29a
+    provenance: user
+
+postcondition_defs:
+  authenticated:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: catalog_heading, role: heading, name: Cửa hàng}
+      expected: {kind: literal, value: true}
+  rows_loaded:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: count_greater_or_equal
+      target:
+        intent: search_result_row
+        role: listitem
+        entity_scope: {field: text, value: {kind: literal, value: Bình}}
+      expected: {kind: literal, value: 1}
+
+fixture_refs: [shopflow@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: shopflow.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: shopflow.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [authenticated]
+  - id: keyword_input
+    kind: action
+    operation: fill
+    target: {intent: search_input, role: textbox, name: Tìm sản phẩm}
+    value: {kind: literal, value: Bình}
+    side_effect: reversible
+  - id: run_search
+    kind: action
+    operation: click
+    target: {intent: search_submit, role: button, name: Tìm}
+    side_effect: external_write
+    postconditions: [rows_loaded]
+  - id: add_out_of_stock
+    kind: action
+    operation: click
+    target:
+      intent: add_to_cart
+      role: button
+      name: Thêm Bình giữ nhiệt vào giỏ
+    side_effect: external_write
+  - id: rejected_result
+    kind: checkpoint
+    assertions:
+      - id: stock_error_visible
+        required: true
+        target: {intent: cart_error, locators: [{kind: css, value: ".cart-error"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: "Không thể thêm: hết hàng"}
+        source_refs: [stock_reject]
+      - id: cart_still_empty
+        required: true
+        target: {intent: cart_row, locators: [{kind: css, value: "#cart-list li[data-line-ref]"}]}
+        comparator: count_equals
+        expected: {kind: literal, value: 0}
+        source_refs: [stock_reject]
+  - id: open_cart
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /cart}
+    side_effect: read
+  - id: checkout_empty
+    kind: action
+    operation: click
+    target: {intent: checkout_submit, role: button, name: Thanh toán}
+    side_effect: external_write
+  - id: empty_cart_rejected
+    kind: checkpoint
+    assertions:
+      - id: empty_cart_error
+        required: true
+        target: {intent: cart_error, locators: [{kind: css, value: ".cart-error"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: Giỏ hàng trống}
+        source_refs: [stock_reject]
+
+completion:
+  required_nodes: [add_out_of_stock, rejected_result, checkout_empty, empty_cart_rejected]
+  required_assertions: [stock_error_visible, cart_still_empty, empty_cart_error]

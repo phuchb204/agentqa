@@ -1,0 +1,19 @@
+schema_version: inventory/1
+required_cohorts: [transactional, async, visual]
+required_error_kinds: [business_failure, validation_rejected, async_unknown]
+required_action_groups: [navigate, form_input, pointer, selection, scroll, upload_download, frame_tab, wait]
+required_evaluator_groups: [presence, text_value, attributes_state, counts, network, download, visual]
+cases:
+  benchmarks/public/cases/taskboard/login_create_item.yaml: {cohort: transactional, error_kinds: []}
+  benchmarks/public/cases/taskboard/duplicate_label_rejected.yaml: {cohort: transactional, error_kinds: [validation_rejected]}
+  benchmarks/public/cases/taskboard/async_create_unknown.yaml: {cohort: async, error_kinds: [async_unknown]}
+  benchmarks/public/cases/taskboard/healing_delete_item.yaml: {cohort: recovery, error_kinds: []}
+  benchmarks/public/cases/taskboard/healing_evidence_visible.yaml: {cohort: recovery, error_kinds: []}
+  benchmarks/public/cases/shopflow/search_filter.yaml: {cohort: transactional, error_kinds: []}
+  benchmarks/public/cases/shopflow/cart_checkout_async.yaml: {cohort: async, error_kinds: [async_unknown]}
+  benchmarks/public/cases/shopflow/stock_rejected.yaml: {cohort: transactional, error_kinds: [business_failure]}
+  benchmarks/public/cases/shopflow/upload_download_lab.yaml: {cohort: transactional, error_kinds: []}
+  benchmarks/public/cases/canvasdesk/hotspot_select.yaml: {cohort: transactional, error_kinds: []}
+  benchmarks/public/cases/canvasdesk/theme_visual.yaml: {cohort: visual, error_kinds: []}
+  benchmarks/public/cases/canvasdesk/scroll_reveal.yaml: {cohort: visual, error_kinds: []}
+  benchmarks/public/cases/canvasdesk/delayed_render.yaml: {cohort: visual, error_kinds: []}

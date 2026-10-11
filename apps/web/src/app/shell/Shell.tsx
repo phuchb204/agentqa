@@ -72,6 +72,7 @@ const NAV_ITEMS = [
   { to: "/w/$workspaceId/suites", label: "Bộ ca", exact: false },
   { to: "/w/$workspaceId/runs", label: "Lượt chạy", exact: false },
   { to: "/w/$workspaceId/compare", label: "So sánh", exact: false },
+  { to: "/w/$workspaceId/experiments", label: "Thực nghiệm", exact: false },
 ] as const;
 
 export function Shell() {

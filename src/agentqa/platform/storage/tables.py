@@ -22,6 +22,8 @@ APPEND_ONLY_TABLES = ("run_events", "run_snapshots", "command_receipts", "source
 SOURCE_TABLES = ("sources", "source_revisions", "source_segments", "extraction_jobs", "case_source_links")
 AUTHORING_TABLES = ("authoring_jobs", "authoring_proposals", "exploration_results")
 HEALING_TABLES = ("healing_records",)
+P28_TABLES = ("evaluation_results",)
+P30_TABLES = ("experiments", "experiment_revisions", "experiment_slots")
 P22_TABLES = (
     "decision_cache_entries",
     "decision_cache_receipts",
@@ -955,6 +957,102 @@ healing_records = sa.Table(
     ),
 )
 
+evaluation_results = sa.Table(
+    "evaluation_results",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("run_id", sa.Uuid, nullable=False),
+    sa.Column("execution_id", sa.Uuid),
+    sa.Column("revision_no", sa.Integer, nullable=False),
+    sa.Column("evaluator_version", sa.Text, nullable=False),
+    sa.Column("schema_version", sa.Text, nullable=False),
+    sa.Column("input_digest", sa.Text, nullable=False),
+    sa.Column("oracle_digest", sa.Text, nullable=False),
+    sa.Column("oracle_task_outcome", sa.Text, nullable=False),
+    sa.Column("scorable", sa.Boolean, nullable=False),
+    sa.Column("unscorable_reason", sa.Text),
+    sa.Column("product_verdict", sa.Text),
+    sa.Column("product_gate", sa.Text),
+    sa.Column("false_pass", sa.Boolean, nullable=False, server_default=sa.text("false")),
+    sa.Column("labels", postgresql.JSONB, nullable=False),
+    sa.Column("counters", postgresql.JSONB, nullable=False),
+    sa.Column("superseded_by", sa.Uuid),
+    sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
+    _created_col(),
+    _ws_id_unique("evaluation_results"),
+    sa.UniqueConstraint("workspace_id", "run_id", "revision_no", name="uq_evaluation_results_run_revision"),
+    sa.CheckConstraint("oracle_task_outcome IN ('true', 'false', 'unscorable')", name="ck_evaluation_results_outcome"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], name="fk_evaluation_results_run"
+    ),
+)
+
+experiments = sa.Table(
+    "experiments",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("logical_key", sa.Text, nullable=False),
+    _created_col(),
+    _ws_id_unique("experiments"),
+    sa.UniqueConstraint("workspace_id", "logical_key", name="uq_experiments_workspace_logical_key"),
+)
+
+experiment_revisions = sa.Table(
+    "experiment_revisions",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("experiment_id", sa.Uuid, nullable=False),
+    sa.Column("revision_no", sa.Integer, nullable=False),
+    sa.Column("content", postgresql.JSONB, nullable=False),
+    sa.Column("content_digest", sa.Text, nullable=False),
+    sa.Column("lifecycle", sa.Text, nullable=False, server_default=sa.text("'ready'")),
+    sa.Column("author", sa.Text, nullable=False),
+    _created_col(),
+    _ws_id_unique("experiment_revisions"),
+    sa.UniqueConstraint("workspace_id", "experiment_id", "revision_no", name="uq_experiment_revisions_no"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "experiment_id"],
+        ["experiments.workspace_id", "experiments.id"],
+        name="fk_experiment_revisions_experiment",
+    ),
+)
+
+experiment_slots = sa.Table(
+    "experiment_slots",
+    metadata,
+    _id_col(),
+    _workspace_col(),
+    sa.Column("revision_id", sa.Uuid, nullable=False),
+    sa.Column("slot_key", sa.Text, nullable=False),
+    sa.Column("arm_id", sa.Text, nullable=False),
+    sa.Column("case_key", sa.Text, nullable=False),
+    sa.Column("variant_token", sa.Text),
+    sa.Column("data_row", sa.Integer),
+    sa.Column("repetition", sa.Integer, nullable=False, server_default=sa.text("1")),
+    sa.Column("attempt_no", sa.Integer, nullable=False, server_default=sa.text("1")),
+    sa.Column("parent_slot_id", sa.Uuid),
+    sa.Column("status", sa.Text, nullable=False, server_default=sa.text("'scheduled'")),
+    sa.Column("blocked_reason", sa.Text),
+    sa.Column("run_id", sa.Uuid),
+    sa.Column("scoring_id", sa.Uuid),
+    sa.Column("payload", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    _created_col(),
+    _ws_id_unique("experiment_slots"),
+    sa.UniqueConstraint("workspace_id", "revision_id", "slot_key", "attempt_no", name="uq_experiment_slots_attempt"),
+    sa.CheckConstraint(
+        "status IN ('scheduled', 'running', 'completed', 'blocked', 'error')",
+        name="ck_experiment_slots_status",
+    ),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "revision_id"],
+        ["experiment_revisions.workspace_id", "experiment_revisions.id"],
+        name="fk_experiment_slots_revision",
+    ),
+)
+
 model_calls = sa.Table(
     "model_calls",
     metadata,
@@ -1276,7 +1374,19 @@ SUPERVISOR_READ_TABLES = (
     "fixture_runs",
     *BROWSER_COMMAND_TABLES,
 )
-EVALUATOR_READ_TABLES = ("runs", "executions", "run_events", "assertion_results", "healing_records", "artifacts")
+EVALUATOR_READ_TABLES = (
+    "runs",
+    "run_snapshots",
+    "executions",
+    "run_events",
+    "run_event_payloads",
+    "assertion_results",
+    "healing_records",
+    "artifacts",
+    "evaluation_results",
+    "experiment_slots",
+)
+WORKER_SELECT_EXCLUDED = ("evaluation_results",)
 
 API_INSERT_TABLES = (
     "users",
@@ -1332,6 +1442,9 @@ API_INSERT_TABLES = (
     "schedules",
     "schedule_revisions",
     "webhook_endpoints",
+    "experiments",
+    "experiment_revisions",
+    "experiment_slots",
 )
 API_UPDATE_TABLES = (
     "users",
@@ -1363,6 +1476,7 @@ API_UPDATE_TABLES = (
     "model_calls",
     "schedules",
     "webhook_endpoints",
+    "experiment_slots",
     *REVISION_TABLES,
 )
 API_DELETE_TABLES = ("memberships",)
@@ -1427,8 +1541,8 @@ SUPERVISOR_UPDATE_TABLES = (
     "executions",
     "fixture_runs",
 )
-EVALUATOR_INSERT_TABLES: tuple[str, ...] = ()
-EVALUATOR_UPDATE_TABLES: tuple[str, ...] = ()
+EVALUATOR_INSERT_TABLES: tuple[str, ...] = ("evaluation_results",)
+EVALUATOR_UPDATE_TABLES: tuple[str, ...] = ("evaluation_results",)
 
 
 def _scope_predicate() -> str:
@@ -1611,11 +1725,12 @@ def _grant_privileges(connection: sa.Connection) -> None:
             )
         )
     all_tables = [table.name for table in metadata.sorted_tables]
+    worker_tables = [name for name in all_tables if name not in WORKER_SELECT_EXCLUDED]
     _grant(connection, "agentqa_api", "SELECT", all_tables, existing)
     _grant(connection, "agentqa_api", "INSERT", API_INSERT_TABLES, existing)
     _grant(connection, "agentqa_api", "UPDATE", API_UPDATE_TABLES, existing)
     _grant(connection, "agentqa_api", "DELETE", API_DELETE_TABLES, existing)
-    _grant(connection, "agentqa_worker", "SELECT", all_tables, existing)
+    _grant(connection, "agentqa_worker", "SELECT", worker_tables, existing)
     _grant(connection, "agentqa_worker", "INSERT", WORKER_INSERT_TABLES, existing)
     _grant(connection, "agentqa_worker", "UPDATE", WORKER_UPDATE_TABLES, existing)
     _grant(connection, "agentqa_supervisor", "SELECT", SUPERVISOR_READ_TABLES, existing)
@@ -1664,6 +1779,24 @@ def ensure_authoring_schema(connection: sa.Connection) -> None:
 
 def ensure_healing_schema(connection: sa.Connection) -> None:
     for table_name in HEALING_TABLES:
+        metadata.tables[table_name].create(connection, checkfirst=True)
+    _create_functions(connection)
+    _create_triggers(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_p28_schema(connection: sa.Connection) -> None:
+    for table_name in P28_TABLES:
+        metadata.tables[table_name].create(connection, checkfirst=True)
+    _create_functions(connection)
+    _create_triggers(connection)
+    _enable_rls(connection)
+    _grant_privileges(connection)
+
+
+def ensure_p30_schema(connection: sa.Connection) -> None:
+    for table_name in P30_TABLES:
         metadata.tables[table_name].create(connection, checkfirst=True)
     _create_functions(connection)
     _create_triggers(connection)

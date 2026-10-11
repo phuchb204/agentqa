@@ -1,0 +1,21 @@
+fixture_id: canvasdesk
+version: 1
+seeds:
+  default:
+    cells:
+      - {id: cell-1, name: Ô A, color: "#c0392b"}
+      - {id: cell-2, name: Ô B, color: "#27ae60"}
+      - {id: cell-3, name: Ô C, color: "#2980b9"}
+      - {id: cell-4, name: Ô D, color: "#f39c12"}
+  visual_state:
+    cells:
+      - {id: cell-1, name: Ô A, color: "#c0392b"}
+      - {id: cell-2, name: Ô B, color: "#27ae60"}
+      - {id: cell-3, name: Ô C, color: "#2980b9"}
+      - {id: cell-4, name: Ô D, color: "#f39c12"}
+  isolation:
+    cells:
+      - {id: cell-1, name: Ô A, color: "#c0392b"}
+      - {id: cell-2, name: Ô B, color: "#27ae60"}
+      - {id: cell-3, name: Ô C, color: "#2980b9"}
+      - {id: cell-4, name: Ô D, color: "#f39c12"}

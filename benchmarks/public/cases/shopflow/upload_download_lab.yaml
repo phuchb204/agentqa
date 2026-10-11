@@ -1,0 +1,202 @@
+schema_version: case/1
+logical_key: shopflow_upload_download_lab
+title: Gửi tệp, tải hoá đơn và thao tác trong khung
+goal: Phòng thao tác xử lý gửi tệp, tải hoá đơn, khung nhúng và tab phụ với hiệu ứng ghi nhận đúng
+requirements: [upload_invoice]
+
+source_defs:
+  upload_invoice:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: upload-invoice}
+    quote_digest: 9bf530d9ef9b8e9b001fca96782ed212debe56a07543319dba38d77ad7491f63
+    provenance: user
+
+postcondition_defs:
+  authenticated:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: catalog_heading, role: heading, name: Cửa hàng}
+      expected: {kind: literal, value: true}
+  lab_open:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: lab_section, locators: [{kind: css, value: "#lab-scroll"}]}
+      expected: {kind: literal, value: true}
+
+fixture_refs: [shopflow@1]
+
+required_capabilities: [download, file_upload, frame, tab]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: shopflow.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: shopflow.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [authenticated]
+  - id: open_lab
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /lab}
+    side_effect: read
+    postconditions: [lab_open]
+  - id: dblclick_boost
+    kind: action
+    operation: double_click
+    target: {intent: boost_button, locators: [{kind: css, value: "#lab-dbl"}]}
+    side_effect: external_write
+  - id: hover_reveal
+    kind: action
+    operation: hover
+    target: {intent: hover_zone, locators: [{kind: css, value: "#lab-hover"}]}
+    side_effect: read
+  - id: type_code
+    kind: action
+    operation: type
+    target: {intent: promo_input, role: textbox, name: Ô nhập mã}
+    value: {kind: literal, value: z}
+    side_effect: reversible
+  - id: press_key
+    kind: action
+    operation: press
+    target: {intent: promo_input, role: textbox, name: Ô nhập mã}
+    value: {kind: literal, value: a}
+    side_effect: reversible
+  - id: clear_code
+    kind: action
+    operation: clear
+    target: {intent: promo_input, role: textbox, name: Ô nhập mã}
+    side_effect: reversible
+  - id: scroll_bottom
+    kind: action
+    operation: scroll
+    target: {intent: scroll_target, locators: [{kind: css, value: "#scroll-bottom"}]}
+    side_effect: read
+  - id: effects_result
+    kind: checkpoint
+    assertions:
+      - id: dbl_count_once
+        required: true
+        target: {intent: dbl_count, locators: [{kind: css, value: "#dbl-count"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: "1"}
+        source_refs: [upload_invoice]
+      - id: hover_secret_visible
+        required: true
+        target: {intent: hover_secret, locators: [{kind: css, value: "#hover-secret"}]}
+        comparator: visible
+        expected: {kind: literal, value: true}
+        source_refs: [upload_invoice]
+      - id: press_echo
+        required: true
+        target: {intent: press_echo, locators: [{kind: css, value: "#lab-press-echo"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: "key:a"}
+        source_refs: [upload_invoice]
+      - id: code_cleared
+        required: true
+        target: {intent: promo_input, role: textbox, name: Ô nhập mã}
+        comparator: value_equals
+        expected: {kind: literal, value: ""}
+        source_refs: [upload_invoice]
+  - id: enter_frame
+    kind: action
+    operation: switch_frame
+    value: {kind: literal, value: khung-thanh-toan}
+    side_effect: read
+  - id: confirm_frame
+    kind: action
+    operation: click
+    target: {intent: frame_confirm, role: button, name: Xác nhận khung}
+    side_effect: external_write
+  - id: frame_result
+    kind: checkpoint
+    assertions:
+      - id: frame_confirmed
+        required: true
+        target: {intent: frame_confirm, role: button, name: Xác nhận khung}
+        comparator: text_equals
+        expected: {kind: literal, value: Đã xác nhận}
+        source_refs: [upload_invoice]
+  - id: leave_frame
+    kind: action
+    operation: switch_frame
+    value: {kind: literal, value: main}
+    side_effect: read
+  - id: open_aux_tab
+    kind: action
+    operation: click
+    target: {intent: aux_link, role: link, name: Mở tab phụ}
+    side_effect: external_write
+  - id: bind_aux
+    kind: action
+    operation: switch_page
+    value: {kind: literal, value: aux}
+    side_effect: read
+  - id: upload_file
+    kind: action
+    operation: upload
+    target: {intent: upload_input, locators: [{kind: css, value: "#lab-file"}]}
+    value: {kind: literal, value: mau-don.txt}
+    side_effect: reversible
+  - id: submit_upload
+    kind: action
+    operation: click
+    target: {intent: upload_submit, role: button, name: Gửi tệp}
+    side_effect: external_write
+  - id: upload_result
+    kind: checkpoint
+    assertions:
+      - id: upload_echo
+        required: true
+        target: {intent: upload_echo, locators: [{kind: css, value: "#lab-file-name"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: mau-don.txt}
+        source_refs: [upload_invoice]
+  - id: start_download
+    kind: action
+    operation: click
+    target: {intent: invoice_link, role: link, name: Tải hoá đơn}
+    side_effect: read
+  - id: await_download
+    kind: action
+    operation: expect_download
+    side_effect: read
+  - id: download_result
+    kind: checkpoint
+    assertions:
+      - id: invoice_downloaded
+        required: true
+        comparator: download_matches
+        expected: {kind: literal, value: true}
+        download:
+          filename_contains: hoa-don
+          media_type: text/plain
+          sha256: 1b2f9c9854ac3b2c59c682d700c11a467bba788202945dc5bb41fc54eada335e
+          minimum_count: 1
+        source_refs: [upload_invoice]
+
+completion:
+  required_nodes: [upload_result, download_result]
+  required_assertions: [upload_echo, invoice_downloaded]

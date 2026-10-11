@@ -328,6 +328,226 @@ def _command_run_cancel(args: argparse.Namespace, client: httpx.Client) -> int:
     return EXIT_OK
 
 
+def _command_calibration_validate(args: argparse.Namespace, *, as_json: bool) -> int:
+    from agentqa.platform.calibration import load_manifest
+    from agentqa.platform.calibration.service import CalibrationService
+
+    path = Path(args.manifest)
+    if not path.is_file():
+        raise CliInputError(f"Không tìm thấy manifest '{args.manifest}'")
+    try:
+        manifest = load_manifest(path)
+    except Exception as error:
+        _fail("input_invalid", f"Manifest không hợp lệ: {type(error).__name__}", as_json=as_json)
+        return EXIT_INVALID
+    service = CalibrationService(manifest, receipt_dir=Path(args.receipt_dir) if args.receipt_dir else None)
+    payload = service.validate()
+    _emit(
+        payload,
+        as_json=as_json,
+        human=f"Hợp lệ: {payload['profile_id']}@{payload['version']} · digest {payload['manifest_digest'][:12]}…",
+    )
+    return EXIT_OK
+
+
+def _command_calibration_status(args: argparse.Namespace, *, as_json: bool) -> int:
+    from agentqa.platform.calibration import load_manifest
+    from agentqa.platform.calibration.service import CalibrationService
+
+    path = Path(args.manifest)
+    if not path.is_file():
+        raise CliInputError(f"Không tìm thấy manifest '{args.manifest}'")
+    manifest = load_manifest(path)
+    service = CalibrationService(manifest, receipt_dir=Path(args.receipt_dir) if args.receipt_dir else None)
+    payload = service.status()
+    _emit(
+        payload,
+        as_json=as_json,
+        human=f"{payload['profile_id']}@{payload['version']}: {payload['status']} ({payload.get('reason')})",
+    )
+    return EXIT_OK
+
+
+def _command_calibration_execute(args: argparse.Namespace, *, as_json: bool) -> int:
+    import time
+
+    from agentqa.platform.calibration import load_manifest
+    from agentqa.platform.calibration.live import (
+        LiveResearchHarness,
+        load_private_oracle,
+        research_ref_resolver,
+        run_live_calibration,
+        start_benchmark_apps,
+        stop_benchmark_apps,
+    )
+    from agentqa.platform.calibration.service import CalibrationService
+
+    if not args.live:
+        _fail(
+            "input_invalid",
+            "Calibration execute chỉ chạy với --live (offline dùng validate/status)",
+            as_json=as_json,
+        )
+        return EXIT_INVALID
+    path = Path(args.manifest)
+    if not path.is_file():
+        raise CliInputError(f"Không tìm thấy manifest '{args.manifest}'")
+    manifest = load_manifest(path)
+    oracle_module = load_private_oracle()
+    apps = start_benchmark_apps()
+    root = Path("artifacts") / "research" / f"calibration-{manifest.profile_id}-{int(time.time())}"
+    harness = LiveResearchHarness(apps=apps, root=root, ref_resolver=research_ref_resolver(oracle_module))
+    try:
+        harness.start()
+        outcome = run_live_calibration(manifest, harness, oracle_module, candidate_limit=args.candidates)
+    finally:
+        harness.stop()
+        stop_benchmark_apps(apps)
+    receipt = outcome["receipt"]
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "trials.json").write_text(
+        json.dumps(outcome["trials"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    service = CalibrationService(manifest, receipt_dir=Path(args.receipt_dir) if args.receipt_dir else None)
+    service.save_receipt(receipt)
+    payload = {
+        "profile_id": receipt.profile_id,
+        "status": receipt.status,
+        "reason": receipt.reason,
+        "evidence": receipt.evidence,
+        "sample_units": receipt.sample_units,
+        "groups": receipt.groups,
+        "bound_upper": receipt.bound_upper,
+        "refusal_coverage": receipt.refusal_coverage,
+        "winner": outcome["winner"],
+        "calls_used": outcome["calls_used"],
+        "skipped": outcome["skipped"],
+        "artifacts_dir": str(root),
+        "receipt_path": str(service.receipt_path()),
+    }
+    _emit(
+        payload,
+        as_json=as_json,
+        human=f"{receipt.profile_id}@{receipt.version}: {receipt.status} ({receipt.reason}) · "
+        f"units {receipt.sample_units} · bound {receipt.bound_upper} · calls {outcome['calls_used']}",
+    )
+    return EXIT_OK
+
+
+def _command_experiment_validate(args: argparse.Namespace, *, as_json: bool) -> int:
+    import yaml
+
+    from agentqa.platform.experiments import ExperimentManifest, validate_manifest
+
+    path = Path(args.manifest)
+    if not path.is_file():
+        raise CliInputError(f"Không tìm thấy manifest '{args.manifest}'")
+    try:
+        manifest = ExperimentManifest.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    except Exception as error:
+        _fail("input_invalid", f"Manifest không hợp lệ: {type(error).__name__}", as_json=as_json)
+        return EXIT_INVALID
+    incompatibilities = [item.model_dump() for item in validate_manifest(manifest)]
+    blocking = [item for item in incompatibilities if item["blocking"]]
+    payload = {
+        "experiment_id": manifest.experiment_id,
+        "version": manifest.version,
+        "manifest_digest": manifest.digest(),
+        "incompatibilities": incompatibilities,
+    }
+    _emit(
+        payload,
+        as_json=as_json,
+        human=f"{manifest.experiment_id}@{manifest.version}: {len(blocking)} blocking, "
+        f"{len(incompatibilities) - len(blocking)} warning",
+    )
+    return EXIT_INVALID if blocking else EXIT_OK
+
+
+def _command_experiment_execute(args: argparse.Namespace, *, as_json: bool) -> int:
+    import time
+
+    import yaml
+
+    from agentqa.platform.calibration.live import (
+        LiveResearchHarness,
+        load_private_oracle,
+        research_ref_resolver,
+        start_benchmark_apps,
+        stop_benchmark_apps,
+    )
+    from agentqa.platform.experiments import ExperimentManifest
+    from agentqa.platform.experiments.live import run_live_experiment
+
+    if not args.live:
+        _fail(
+            "input_invalid",
+            "Experiment execute chỉ chạy với --live (offline dùng validate/recompute)",
+            as_json=as_json,
+        )
+        return EXIT_INVALID
+    path = Path(args.manifest)
+    if not path.is_file():
+        raise CliInputError(f"Không tìm thấy manifest '{args.manifest}'")
+    manifest = ExperimentManifest.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    oracle_module = load_private_oracle()
+    apps = start_benchmark_apps()
+    root = Path("artifacts") / "research" / f"harness-{manifest.experiment_id}-{int(time.time())}"
+    harness = LiveResearchHarness(apps=apps, root=root, ref_resolver=research_ref_resolver(oracle_module))
+    try:
+        harness.start()
+        outcome = run_live_experiment(manifest, harness, oracle_module, slot_limit=args.slots)
+    finally:
+        harness.stop()
+        stop_benchmark_apps(apps)
+    arms_summary = {
+        arm_id: {
+            "oracle_lower": metrics["oracle"]["success_lower_bound"],
+            "oracle_upper": metrics["oracle"]["success_upper_bound"],
+            "unscorable": metrics["oracle"]["unscorable"],
+            "false_passes": metrics["false_passes"],
+            "false_heals": metrics["healing"]["false_heals"],
+            "blocked": metrics["blocked"],
+            "errors": metrics["errors"],
+            "completed": metrics["completed"],
+        }
+        for arm_id, metrics in outcome["analysis"]["arms"].items()
+    }
+    payload = {
+        "experiment_id": manifest.experiment_id,
+        "revision_id": outcome["revision_id"],
+        "summary": outcome["summary"],
+        "calls_used": outcome["calls_used"],
+        "image_capability_verified": outcome["image_capability_verified"],
+        "blocked_slots": len(outcome["blocked"]),
+        "arms": arms_summary,
+        "bundle_dir": outcome["bundle_dir"],
+    }
+    _emit(
+        payload,
+        as_json=as_json,
+        human=f"{manifest.experiment_id}: {outcome['summary']} · calls {outcome['calls_used']} · "
+        f"blocked {len(outcome['blocked'])} · bundle {outcome['bundle_dir']}",
+    )
+    return EXIT_OK
+
+
+def _command_experiment_recompute(args: argparse.Namespace, *, as_json: bool) -> int:
+    from agentqa.platform.experiments import recompute
+
+    bundle = Path(args.bundle)
+    if not bundle.is_dir():
+        raise CliInputError(f"Không tìm thấy bundle '{args.bundle}'")
+    report = recompute(bundle)
+    payload = {"matches": report["matches"], "diffs": report["diffs"], "charts": report["charts"]}
+    _emit(
+        payload,
+        as_json=as_json,
+        human=("Recompute khớp bundle" if report["matches"] else f"Recompute lệch: {report['diffs']}"),
+    )
+    return EXIT_OK if report["matches"] else EXIT_NON_BUSINESS
+
+
 def _command_suite_bind(args: argparse.Namespace, client: httpx.Client) -> int:
     body = _expect(
         _request(
@@ -458,6 +678,37 @@ def build_parser() -> argparse.ArgumentParser:
     suite_bind.add_argument("--revision", required=True)
     suite_bind.set_defaults(handler="suite-bind")
 
+    calibration = subparsers.add_parser("calibration", help="Calibration manifest (offline validate/status)")
+    calibration_sub = calibration.add_subparsers(dest="calibration_command", required=True)
+    calibration_validate = calibration_sub.add_parser("validate")
+    calibration_validate.add_argument("--manifest", required=True)
+    calibration_validate.add_argument("--receipt-dir", default=None)
+    calibration_validate.set_defaults(handler="calibration-validate")
+    calibration_status = calibration_sub.add_parser("status")
+    calibration_status.add_argument("--manifest", required=True)
+    calibration_status.add_argument("--receipt-dir", default=None)
+    calibration_status.set_defaults(handler="calibration-status")
+    calibration_execute = calibration_sub.add_parser("execute")
+    calibration_execute.add_argument("--manifest", required=True)
+    calibration_execute.add_argument("--receipt-dir", default=None)
+    calibration_execute.add_argument("--candidates", type=int, default=None)
+    calibration_execute.add_argument("--live", action="store_true")
+    calibration_execute.set_defaults(handler="calibration-execute")
+
+    experiment = subparsers.add_parser("experiment", help="Experiment manifest (offline validate/recompute)")
+    experiment_sub = experiment.add_subparsers(dest="experiment_command", required=True)
+    experiment_validate = experiment_sub.add_parser("validate")
+    experiment_validate.add_argument("--manifest", required=True)
+    experiment_validate.set_defaults(handler="experiment-validate")
+    experiment_execute = experiment_sub.add_parser("execute")
+    experiment_execute.add_argument("--manifest", required=True)
+    experiment_execute.add_argument("--slots", type=int, default=None)
+    experiment_execute.add_argument("--live", action="store_true")
+    experiment_execute.set_defaults(handler="experiment-execute")
+    experiment_recompute = experiment_sub.add_parser("recompute")
+    experiment_recompute.add_argument("--bundle", required=True)
+    experiment_recompute.set_defaults(handler="experiment-recompute")
+
     serve = subparsers.add_parser("serve", help="Managed local start (cùng API services)")
     serve.add_argument("--dsn", help="DSN PostgreSQL (hoặc AGENTQA_DSN)")
     serve.add_argument("--worker-dsn", help="DSN cho worker role (tùy chọn)")
@@ -474,6 +725,9 @@ def main(
     *,
     interrupt_after_polls: int | None = None,
 ) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
     as_json = "--json" in (argv if argv is not None else sys.argv[1:])
     try:
         args = build_parser().parse_args(argv)
@@ -489,6 +743,18 @@ def main(
     try:
         if handler == "config-validate":
             return _command_config_validate(args, as_json=args.json_output)
+        if handler == "calibration-validate":
+            return _command_calibration_validate(args, as_json=args.json_output)
+        if handler == "calibration-status":
+            return _command_calibration_status(args, as_json=args.json_output)
+        if handler == "calibration-execute":
+            return _command_calibration_execute(args, as_json=args.json_output)
+        if handler == "experiment-validate":
+            return _command_experiment_validate(args, as_json=args.json_output)
+        if handler == "experiment-execute":
+            return _command_experiment_execute(args, as_json=args.json_output)
+        if handler == "experiment-recompute":
+            return _command_experiment_recompute(args, as_json=args.json_output)
         if handler == "serve":
             return _command_serve(args)
         token = _resolve_token(args.token_env)

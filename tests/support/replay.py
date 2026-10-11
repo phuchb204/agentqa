@@ -115,12 +115,16 @@ def start_replay_supervisor(
     fault_storage: bool = False,
     agent_models: bool = False,
     agent_script: str = "",
+    fixture_endpoints: list[str] | None = None,
+    baseline_dir: str = "",
+    extra_allow_origins: list[str] | None = None,
 ) -> ReplaySupervisor:
     parts = urlsplit(taskboard_server.base_url)
     extra_args = [
         f"--fixture-base-url={taskboard_server.base_url}",
         f"--fixture-control-token={taskboard_server.control_token}",
     ]
+
     if fault_loss_intent:
         extra_args.append(f"--fault-loss-intent={fault_loss_intent}")
     if fault_storage:
@@ -129,6 +133,10 @@ def start_replay_supervisor(
         extra_args.append("--agent-models=fake")
     if agent_script:
         extra_args.append(f"--agent-script={agent_script}")
+    for endpoint in fixture_endpoints or []:
+        extra_args.append(f"--fixture-endpoint={endpoint}")
+    if baseline_dir:
+        extra_args.append(f"--baseline-dir={baseline_dir}")
     process = start_supervisor(
         dsn=dsn,
         workspace_id=workspace_id,
@@ -136,7 +144,7 @@ def start_replay_supervisor(
         run_id=run_id,
         attempt_id=attempt_id,
         session_key=f"replay-{execution_key(run_id)}",
-        allow_origins=[f"127.0.0.1:{parts.port}"],
+        allow_origins=[f"127.0.0.1:{parts.port}", *(extra_allow_origins or [])],
         lease_seconds=lease_seconds,
         fence_epoch=fence_epoch,
         supervisor_id="replay-sup",
@@ -173,6 +181,9 @@ def build_replay_harness(
     agent_models: bool = False,
     agent_script: str = "",
     healing_profile=None,
+    fixture_endpoints: list[str] | None = None,
+    baseline_dir: str = "",
+    extra_allow_origins: list[str] | None = None,
 ) -> ReplayHarness:
     supervisor = start_replay_supervisor(
         dsn=test_db.dsn(ROLE_SUPERVISOR),
@@ -185,6 +196,9 @@ def build_replay_harness(
         fault_storage=fault_storage,
         agent_models=agent_models,
         agent_script=agent_script,
+        fixture_endpoints=fixture_endpoints,
+        baseline_dir=baseline_dir,
+        extra_allow_origins=extra_allow_origins,
     )
     remote = RemoteCoordinator(supervisor)
     recorder = RunEventRecorder(engines[ROLE_WORKER])

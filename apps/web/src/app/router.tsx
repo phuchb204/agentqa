@@ -12,6 +12,7 @@ import { useApi } from "../api/context";
 import { LoadingView } from "../components/States";
 import { CaseEditorPage, CasesListPage } from "../features/cases/CaseEditorPage";
 import { ComparePage } from "../features/compare/ComparePage";
+import { ExperimentDetailPage, ExperimentsListPage } from "../features/experiments/ExperimentsPage";
 import { LiveRunPage, RunsListPage } from "../features/live/LiveRunPage";
 import { RequirementsPage } from "../features/requirements/RequirementsPage";
 import { RunDetailPage } from "../features/runs/RunDetailPage";
@@ -158,6 +159,24 @@ const liveRunRoute = createRoute({
   },
 });
 
+const experimentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/w/$workspaceId/experiments",
+  component: function ExperimentsRoute() {
+    const { workspaceId } = experimentsRoute.useParams();
+    return <ExperimentsListPage workspaceId={workspaceId} />;
+  },
+});
+
+const experimentDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/w/$workspaceId/experiments/$revisionId",
+  component: function ExperimentDetailRoute() {
+    const { workspaceId, revisionId } = experimentDetailRoute.useParams();
+    return <ExperimentDetailPage workspaceId={workspaceId} revisionId={revisionId} />;
+  },
+});
+
 const compareRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/w/$workspaceId/compare",
@@ -184,6 +203,8 @@ export const routeTree = rootRoute.addChildren([
   runDetailRoute,
   liveRunRoute,
   compareRoute,
+  experimentsRoute,
+  experimentDetailRoute,
   settingsRoute,
   settingsIndexRoute,
 ]);

@@ -1,0 +1,82 @@
+schema_version: case/1
+logical_key: canvasdesk_hotspot_select
+title: Chọn vùng trên bảng vẽ
+goal: Chọn vùng Ô B trên bảng; trạng thái chọn hiển thị đúng vùng đã chọn
+requirements: [hotspot_select]
+
+source_defs:
+  hotspot_select:
+    source_content_digest: 0015a40098c948d44ac2f929e4965ecd771340aac3f8fb0602cdbeaff858a45d
+    anchor: {type: section, value: hotspot-select}
+    quote_digest: 5feaa66c7684a36ac43980bdcfa7345c60f174c9e38c58db756312e10406f262
+    provenance: user
+
+postcondition_defs:
+  board_ready:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: board_canvas, locators: [{kind: css, value: "#board-canvas"}]}
+      expected: {kind: literal, value: true}
+
+fixture_refs: [canvasdesk@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: canvasdesk.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: canvasdesk.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [board_ready]
+  - id: select_hotspot_b
+    kind: action
+    operation: click
+    target: {intent: hotspot_b, role: button, name: Ô B}
+    side_effect: external_write
+  - id: selection_result
+    kind: checkpoint
+    assertions:
+      - id: hotspot_b_selected
+        required: true
+        target:
+          intent: hotspot_b
+          role: button
+          name: Ô B
+          attributes: {data-selected: "true"}
+        comparator: attribute_equals
+        expected: {kind: literal, value: "true"}
+        source_refs: [hotspot_select]
+      - id: only_one_selected
+        required: true
+        target: {intent: selected_hotspot, locators: [{kind: css, value: ".hotspot[data-selected=true]"}]}
+        comparator: count_equals
+        expected: {kind: literal, value: 1}
+        source_refs: [hotspot_select]
+      - id: selection_status_text
+        required: true
+        target: {intent: selection_status, locators: [{kind: css, value: "#selection-status"}]}
+        comparator: text_equals
+        expected: {kind: literal, value: "Đang chọn: Ô B"}
+        source_refs: [hotspot_select]
+
+completion:
+  required_nodes: [select_hotspot_b, selection_result]
+  required_assertions: [hotspot_b_selected, only_one_selected, selection_status_text]

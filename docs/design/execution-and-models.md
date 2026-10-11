@@ -95,6 +95,8 @@ Trình tự: dữ liệu/schema sai → escalation nếu được phép; progres
 
 Mọi nhánh LLM vẫn qua guard. Noul không có confidence riêng. Choice confidence không là P(correct target); ngưỡng theo question, candidate population và risk/action class, versioned/calibrated. Model không sinh tự do "lý do Jev"; rationale là summary từ state/question/answer và engine rule đã áp.
 
+Với policy LLM live, parser chấp nhận JSON object nằm trong text (bỏ code fence, trích object hợp lệ đầu tiên) trước khi repair; runner khớp case node theo intent, sau đó theo tên/role của candidate, và theo locator value khớp tên candidate — nhờ đó fill secret vẫn resolve qua node value (`node_secret`) kể cả khi model đặt intent khác. Các fallback này không nới guard: secret không bao giờ đến từ proposal, và operation ngoài registry vẫn bị từ chối.
+
 ## 8. Hai HTTP adapters
 
 | Adapter | Request | Parse/normalization |

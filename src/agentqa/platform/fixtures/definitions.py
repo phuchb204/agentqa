@@ -11,6 +11,7 @@ class FixtureDefinition:
     fixture_id: str
     version: int
     seeds: dict[str, dict[str, Any]]
+    default_seed: str = "success"
 
     def ref(self) -> str:
         return f"{self.fixture_id}@{self.version}"
@@ -31,5 +32,51 @@ TASKBOARD_FIXTURE = FixtureDefinition(
             "items": [{"label": "Việc giống nhau"}, {"label": "Việc giống nhau"}],
             "duplicate_policy": "allow",
         },
+    },
+)
+
+SHOPFLOW_CATALOG = [
+    {"id": "sp-1", "name": "Bút bi xanh", "category": "van-phong", "price": 5000, "stock": 5},
+    {"id": "sp-2", "name": "Bút chì gỗ", "category": "van-phong", "price": 7000, "stock": 3},
+    {"id": "sp-3", "name": "Ly thuỷ tinh", "category": "do-gia-dung", "price": 45000, "stock": 2},
+    {"id": "sp-4", "name": "Bình giữ nhiệt", "category": "do-gia-dung", "price": 120000, "stock": 0},
+]
+
+SHOPFLOW_FIXTURE = FixtureDefinition(
+    fixture_id="shopflow",
+    version=1,
+    default_seed="catalog_default",
+    seeds={
+        "catalog_default": {"catalog": SHOPFLOW_CATALOG},
+        "stock_shortage": {
+            "catalog": [
+                {"id": "sp-1", "name": "Bút bi xanh", "category": "van-phong", "price": 5000, "stock": 1},
+                {"id": "sp-4", "name": "Bình giữ nhiệt", "category": "do-gia-dung", "price": 120000, "stock": 0},
+            ]
+        },
+        "single_product": {
+            "catalog": [
+                {"id": "sp-3", "name": "Ly thuỷ tinh", "category": "do-gia-dung", "price": 45000, "stock": 2},
+            ]
+        },
+        "isolation": {"catalog": SHOPFLOW_CATALOG},
+    },
+)
+
+CANVASDESK_CELLS = [
+    {"id": "cell-1", "name": "Ô A", "color": "#c0392b"},
+    {"id": "cell-2", "name": "Ô B", "color": "#27ae60"},
+    {"id": "cell-3", "name": "Ô C", "color": "#2980b9"},
+    {"id": "cell-4", "name": "Ô D", "color": "#f39c12"},
+]
+
+CANVASDESK_FIXTURE = FixtureDefinition(
+    fixture_id="canvasdesk",
+    version=1,
+    default_seed="default",
+    seeds={
+        "default": {"cells": CANVASDESK_CELLS},
+        "visual_state": {"cells": CANVASDESK_CELLS},
+        "isolation": {"cells": CANVASDESK_CELLS},
     },
 )

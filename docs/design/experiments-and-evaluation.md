@@ -1,7 +1,7 @@
 # Thực nghiệm, benchmark và đánh giá
 
 - Ngày: 2026-10-06
-- Trạng thái: Thiết kế pipeline và protocol; chưa có kết quả thực nghiệm
+- Trạng thái: Pipeline/protocol đã triển khai (P27–P30); đã chạy live calibration + RQ1–RQ3 với provider thật (receipts/bundles trong `artifacts/`), calibration còn provisional theo bound đo được
 - Phạm vi: RQ1–RQ3, calibration, mutation, oracle và export
 - Liên quan: [Mục tiêu RQ](../research-questions.md), [spec](../specs/product-spec.md), [Platform](platform-and-storage.md)
 
@@ -41,6 +41,8 @@ Coverage inventory phủ từng operation/evaluator và failure scenario của s
 Ground truth element mapping nằm trong fixture/evaluator registry, không là `data-oracle-id` trong DOM hay overlay. Trusted sensor ghi actual action target bằng opaque runtime reference và evaluator ánh xạ out-of-band tới entity/handler identity. Không cho worker query map này; semantic collector không lấy private metadata. Action-level ground truth cho phép chấm wrong heal kể cả khi ca cuối failed.
 
 Mutation đổi ID không làm hỏng mọi semantic locator. Eligibility/mismatch opportunities được tính theo locator recipe/guard đã pin; không tính một thay đổi vô hại đối với test thành false negative detection. RQ2 có robustness cohort với descriptor bình thường và fragility cohort với preferred locator cố định; cohort được báo riêng, không dùng cohort cố ý fragile để khẳng định vượt mọi test Playwright.
+
+Trong run live, mutation được áp atomically cùng fixture prepare bên trong mỗi execution: harness đăng ký "mutation intent" (operator + params, control token) trước khi submit; app giữ intent riêng theo namespace và áp nó ngay sau khi dựng seed, nên reset của coordinator không xóa variant. Environment revision mang `fixture_seed` để coordinator prepare đúng seed của case (ví dụ `duplicate_rejected`); runtime chỉ thấy public snapshot và token mù, không nhận tên operator hay patch. `ExecutionSpec.fixture_seed` và `executions.parameters` (kế thừa environment parameters) giữ nguyên semantics: worker merge environment + execution parameters, evaluator đọc cùng nguồn.
 
 ## 4. Runtime records cho scoring
 

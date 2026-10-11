@@ -369,6 +369,7 @@ class RunService:
                                 run_id=run_id,
                                 case_revision_id=revision.revision_id,
                                 logical_key=revision.logical_key,
+                                parameters=dict(environment_content.get("parameters", {})),
                                 status="queued",
                             )
                         )

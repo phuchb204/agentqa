@@ -4,10 +4,13 @@ import argparse
 import asyncio
 import base64
 import json
+import os
 import sys
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from agentqa.agent.browser import BrowserSession, PlaywrightActionPort, PlaywrightReadPort, SafeEvidenceService
 from agentqa.agent.browser.capture import MaskRegion
@@ -16,9 +19,18 @@ from agentqa.agent.browser.journals import DownloadJournal, NetworkJournal
 from agentqa.agent.replay import PlaywrightSceneProvider
 from agentqa.contracts.actions import ActionCommand, ActionReceipt
 from agentqa.contracts.values import SensitiveValue
-from agentqa.platform.fixtures import FixtureRegistry, TaskboardFixture, synthetic_password
+from agentqa.platform.fixtures import (
+    CanvasdeskFixture,
+    FixtureRegistry,
+    ShopflowFixture,
+    TaskboardFixture,
+    canvasdesk_password,
+    shopflow_password,
+    synthetic_password,
+)
 from agentqa.platform.runs.composition import AgentModels
 from agentqa.platform.runs.coordinator import BridgedFixtureRuns, BridgedRunEventRecorder, RunCoordinator
+from agentqa.platform.runs.facts import DirectoryBaselineResolver
 from agentqa.platform.security.egress import AllowedEndpoint, EgressPolicy, system_resolver
 from agentqa.platform.security.proxy import EgressProxy
 from agentqa.platform.security.redaction import RedactionService
@@ -37,13 +49,28 @@ class NullRedactor:
         return value
 
 
+@dataclass(frozen=True)
+class MemoryArtifact:
+    data: bytes
+    media_type: str
+
+
 class MemorySink:
     def __init__(self) -> None:
         self.count = 0
+        self.records: dict[str, MemoryArtifact] = {}
 
     def put(self, label: str, payload: bytes, media_type: str) -> str:
         self.count += 1
-        return f"mem://{label}/{self.count}"
+        ref = f"mem://{label}/{self.count}"
+        self.records[ref] = MemoryArtifact(data=payload, media_type=media_type)
+        return ref
+
+    def get(self, ref: str) -> MemoryArtifact:
+        record = self.records.get(ref)
+        if record is None:
+            raise KeyError(ref)
+        return record
 
 
 class FaultSink(MemorySink):
@@ -60,12 +87,35 @@ class FixtureSecretBroker:
 
     def resolve(self, grant_ref: str) -> SensitiveValue:
         parts = grant_ref.split(".")
-        if len(parts) == 3 and parts[0] == "taskboard" and self._namespace:
-            user, field = parts[1], parts[2]
-            if field == "password":
-                return SensitiveValue(synthetic_password(self._namespace, user))
-            return SensitiveValue(user)
+        if len(parts) == 3 and self._namespace:
+            app, user, field = parts
+            password_factory = {
+                "taskboard": synthetic_password,
+                "shopflow": shopflow_password,
+                "canvasdesk": canvasdesk_password,
+            }.get(app)
+            if password_factory is not None:
+                if field == "password":
+                    return SensitiveValue(password_factory(self._namespace, user))
+                return SensitiveValue(user)
         raise KeyError(f"grant '{grant_ref}' không resolve được")
+
+
+def register_fixture_endpoint(registry: FixtureRegistry, value: str) -> None:
+    parts = value.split("|")
+    if len(parts) != 3 or not all(parts):
+        raise ValueError(f"fixture endpoint phải là 'fixture_id@version|base_url|control_token': {value!r}")
+    ref, base_url, control_token = parts
+    fixture_id = ref.partition("@")[0]
+    handlers = {
+        "taskboard": TaskboardFixture,
+        "shopflow": ShopflowFixture,
+        "canvasdesk": CanvasdeskFixture,
+    }
+    handler = handlers.get(fixture_id)
+    if handler is None:
+        raise ValueError(f"fixture '{fixture_id}' không được hỗ trợ")
+    registry.register(handler(base_url, control_token))
 
 
 class LossExecutor:
@@ -123,9 +173,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--fixture-base-url", default="")
     parser.add_argument("--fixture-control-token", default="")
+    parser.add_argument("--fixture-endpoint", action="append", default=[])
+    parser.add_argument("--baseline-dir", default="")
     parser.add_argument("--fault-loss-intent", default="")
     parser.add_argument("--fault-storage", action="store_true")
-    parser.add_argument("--agent-models", choices=["none", "fake"], default="none")
+    parser.add_argument("--agent-models", choices=["none", "fake", "live"], default="none")
     parser.add_argument("--agent-script", default="")
     parser.add_argument("--upload-dir", default="")
     return parser
@@ -181,6 +233,9 @@ async def run(args: argparse.Namespace) -> None:
     fixture_registry = FixtureRegistry()
     if args.fixture_base_url:
         fixture_registry.register(TaskboardFixture(args.fixture_base_url, args.fixture_control_token))
+    for endpoint in args.fixture_endpoint:
+        register_fixture_endpoint(fixture_registry, endpoint)
+    baseline_resolver = DirectoryBaselineResolver(Path(args.baseline_dir)) if args.baseline_dir else None
     agent_models = AgentModels()
     if args.agent_models == "fake":
         if args.agent_script:
@@ -193,6 +248,8 @@ async def run(args: argparse.Namespace) -> None:
             from agentqa.models.fakes import FakeGo, FakeJev
 
             agent_models = AgentModels(generative=FakeGo(), decision=FakeJev())
+    if args.agent_models == "live":
+        agent_models = _build_live_models(sink)
     fixture_runs = BridgedFixtureRuns(bridge, args.dsn, fixture_registry)
     coordinator = RunCoordinator(
         runtime=runtime,
@@ -205,6 +262,7 @@ async def run(args: argparse.Namespace) -> None:
         agent_models=agent_models,
         taint=taint,
         fixture_runs=fixture_runs,
+        baseline_resolver=baseline_resolver,
     )
     frame_state = {"seq": 0}
 
@@ -251,9 +309,55 @@ async def run(args: argparse.Namespace) -> None:
         bridge.stop()
 
 
-def _workspace_root() -> str:
-    import os
+LIVE_ROUTE_DEFAULTS = {
+    "opencode_go": ("AGENTQA_LLM_API_KEY", "AGENTQA_LLM_BASE_URL", "AGENTQA_LLM_MODEL"),
+    "opencode_zen": ("AGENTQA_JEV_API_KEY", "AGENTQA_JEV_BASE_URL", "AGENTQA_JEV_MODEL"),
+}
+LIVE_BASE_DEFAULTS = {
+    "opencode_go": "https://opencode.ai/zen/go/v1",
+    "opencode_zen": "https://opencode.ai/zen/v1",
+}
+LIVE_MODEL_DEFAULTS = {"opencode_go": "deepseek-v4.1-flash", "opencode_zen": "jev-1.13-free"}
 
+
+def _build_live_models(sink: MemorySink) -> AgentModels:
+    from agentqa.contracts.values import SensitiveValue
+    from agentqa.models.opencode_go import GoChatAdapter
+    from agentqa.models.opencode_zen import ZenSystemOneAdapter
+    from agentqa.models.wire import ImagePayload
+
+    def load_image(ref: str) -> ImagePayload:
+        artifact = sink.get(ref)
+        return ImagePayload(media_type=artifact.media_type, data=artifact.data)
+
+    def route_config(route: str) -> tuple[str, str, str]:
+        key_env, base_env, model_env = LIVE_ROUTE_DEFAULTS[route]
+        key = os.environ.get(key_env, "")
+        if not key:
+            raise SystemExit(f"live models cần biến môi trường {key_env}")
+        base = os.environ.get(base_env) or LIVE_BASE_DEFAULTS[route]
+        model = os.environ.get(model_env) or LIVE_MODEL_DEFAULTS[route]
+        return key, base, model
+
+    go_key, go_base, go_model = route_config("opencode_go")
+    jev_key, jev_base, jev_model = route_config("opencode_zen")
+    generative = GoChatAdapter(
+        base_url=go_base,
+        model=go_model,
+        api_key=SensitiveValue(go_key),
+        session_id=f"live-{uuid4().hex[:12]}",
+        image_loader=load_image,
+        structured_output=True,
+    )
+    decision = ZenSystemOneAdapter(
+        base_url=jev_base,
+        model=jev_model,
+        api_key=SensitiveValue(jev_key),
+    )
+    return AgentModels(generative=generative, decision=decision)
+
+
+def _workspace_root() -> str:
     return os.environ.get("AGENTQA_WORKSPACE_ROOT", os.getcwd())
 
 

@@ -290,6 +290,35 @@ export function makeFakeClient(overrides: Partial<ApiClient> = {}): ApiClient {
       (workspaceId: string, artifactId: string) =>
         `/api/v1/workspaces/${workspaceId}/artifacts/${artifactId}/content`,
     ),
+    listExperimentRevisions: vi.fn(async () => ({ items: [] })),
+    createExperimentRevision: vi.fn(async (_w: string, logicalKey: string) => ({
+      revision_id: "exp-rev-1",
+      experiment_id: "exp-1",
+      logical_key: logicalKey,
+      revision_no: 1,
+      content_digest: "c".repeat(64),
+    })),
+    executeExperimentRevision: vi.fn(async () => ({
+      revision_id: "exp-rev-1",
+      attempt_no: 1,
+      slots: 0,
+      completed: 0,
+      blocked: 0,
+      errors: 0,
+    })),
+    getExperimentResults: vi.fn(async () => ({
+      revision_id: "exp-rev-1",
+      content_digest: "c".repeat(64),
+      manifest: {},
+      slots: [],
+      analysis: {
+        arms: {},
+        comparisons: [],
+        metric_definitions: {},
+        seeds: [],
+        charts: { oracle_success: [], false_heals: [], wall_time: [] },
+      },
+    })),
   };
   return { ...base, ...overrides };
 }

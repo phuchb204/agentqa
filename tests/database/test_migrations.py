@@ -6,13 +6,13 @@ import secrets
 import httpx
 import pytest
 
-from agentqa.platform.storage.migrate import downgrade, upgrade
+from agentqa.platform.storage.migrate import alembic_head_revision, downgrade, upgrade
 from agentqa.platform.storage.roles import ROLE_MIGRATE, admin_dsn, create_database, drop_database, role_dsn
 from tests.support.postgres import fetch_scalar
 
 pytestmark = pytest.mark.asyncio
 
-HEAD_REVISION = "0012_outbox_webhooks"
+HEAD_REVISION = alembic_head_revision()
 TABLE_COUNT_SQL = "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'"
 VERSION_SQL = "SELECT version_num FROM alembic_version"
 

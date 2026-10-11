@@ -1,0 +1,118 @@
+schema_version: case/1
+logical_key: shopflow_search_filter
+title: Tìm sản phẩm theo từ khóa, danh mục và tồn kho
+goal: Tìm kiếm chỉ trả về sản phẩm khớp từ khóa trong danh mục văn phòng còn hàng
+requirements: [search_filter]
+
+source_defs:
+  search_filter:
+    source_content_digest: 4c33b1415c1a597489e336d3a993ac4fc78e8c201a75fa97683e2777523bde51
+    anchor: {type: section, value: search-filter}
+    quote_digest: 28816d0f9d1311d067315b9a4fbe9c50891558463bf864c016406e04f4673db8
+    provenance: user
+
+postcondition_defs:
+  authenticated:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: visible
+      target: {intent: catalog_heading, role: heading, name: Cửa hàng}
+      expected: {kind: literal, value: true}
+  rows_loaded:
+    classification: process
+    condition:
+      kind: comparison
+      comparator: count_greater_or_equal
+      target:
+        intent: search_result_row
+        role: listitem
+        entity_scope: {field: text, value: {kind: parameter, name: keyword, type: string}}
+      expected: {kind: literal, value: 1}
+
+parameter_defs:
+  keyword: {type: string, required: true}
+
+fixture_refs: [shopflow@1]
+
+nodes:
+  - id: open_login
+    kind: action
+    operation: navigate
+    value: {kind: literal, value: /login}
+    side_effect: read
+  - id: username
+    kind: action
+    operation: fill
+    target: {intent: login_username, role: textbox, name: Tài khoản}
+    value: {kind: secret, credential_ref: shopflow.alice.username}
+    side_effect: reversible
+  - id: password
+    kind: action
+    operation: fill
+    target: {intent: login_password, role: textbox, name: Mật khẩu}
+    value: {kind: secret, credential_ref: shopflow.alice.password}
+    side_effect: reversible
+  - id: sign_in
+    kind: action
+    operation: click
+    target: {intent: login_submit, role: button, name: Đăng nhập}
+    side_effect: external_write
+    postconditions: [authenticated]
+  - id: keyword_input
+    kind: action
+    operation: fill
+    target: {intent: search_input, role: textbox, name: Tìm sản phẩm}
+    value: {kind: parameter, name: keyword, type: string}
+    side_effect: reversible
+  - id: stock_only
+    kind: action
+    operation: check
+    target: {intent: stock_filter, role: checkbox, name: Chỉ còn hàng}
+    side_effect: reversible
+  - id: category
+    kind: action
+    operation: select
+    target: {intent: category_filter, role: combobox, name: Danh mục}
+    value: {kind: literal, value: van-phong}
+    side_effect: reversible
+  - id: run_search
+    kind: action
+    operation: click
+    target: {intent: search_submit, role: button, name: Tìm}
+    side_effect: external_write
+    postconditions: [rows_loaded]
+  - id: result
+    kind: checkpoint
+    assertions:
+      - id: keyword_rows_once
+        required: true
+        target:
+          intent: search_result_row
+          role: listitem
+          entity_scope: {field: text, value: {kind: parameter, name: keyword, type: string}}
+        comparator: count_equals
+        expected: {kind: literal, value: 2}
+        source_refs: [search_filter]
+      - id: stock_filter_checked
+        required: true
+        target: {intent: stock_filter, role: checkbox, name: Chỉ còn hàng}
+        comparator: state_checked
+        expected: {kind: literal, value: true}
+        source_refs: [search_filter]
+      - id: category_value
+        required: true
+        target: {intent: category_filter, role: combobox, name: Danh mục}
+        comparator: value_equals
+        expected: {kind: literal, value: van-phong}
+        source_refs: [search_filter]
+      - id: search_request_seen
+        required: true
+        comparator: network_request
+        network: {method: GET, path_contains: /api/search, minimum_count: 1}
+        expected: {kind: literal, value: true}
+        source_refs: [search_filter]
+
+completion:
+  required_nodes: [run_search, result]
+  required_assertions: [keyword_rows_once, stock_filter_checked, category_value, search_request_seen]
