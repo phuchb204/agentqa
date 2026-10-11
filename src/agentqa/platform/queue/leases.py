@@ -108,15 +108,25 @@ class JobQueue:
                 job = None
                 for candidate in candidates:
                     if candidate.run_id is not None:
-                        await session.execute(
-                            sa.select(runs.c.id).where(runs.c.id == candidate.run_id).with_for_update()
-                        )
+                        run_lock = (
+                            await session.execute(
+                                sa.select(runs.c.id)
+                                .where(runs.c.id == candidate.run_id)
+                                .with_for_update(skip_locked=True)
+                            )
+                        ).one_or_none()
+                        if run_lock is None:
+                            continue
                     if candidate.execution_id is not None:
-                        await session.execute(
-                            sa.select(executions.c.id)
-                            .where(executions.c.id == candidate.execution_id)
-                            .with_for_update()
-                        )
+                        execution_lock = (
+                            await session.execute(
+                                sa.select(executions.c.id)
+                                .where(executions.c.id == candidate.execution_id)
+                                .with_for_update(skip_locked=True)
+                            )
+                        ).one_or_none()
+                        if execution_lock is None:
+                            continue
                     job = (
                         await session.execute(
                             sa.select(jobs)

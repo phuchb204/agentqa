@@ -270,7 +270,7 @@ class BackupService:
                 rows = (
                     (
                         await connection.execute(
-                            sa.text("SELECT object_key, digest FROM artifacts WHERE object_key IS NOT NULL")
+                            sa.text("SELECT object_key, digest, state FROM artifacts WHERE object_key IS NOT NULL")
                         )
                     )
                     .mappings()
@@ -280,7 +280,12 @@ class BackupService:
             await link_engine.dispose()
         for row in rows:
             info = manifest.blobs.get(row["object_key"])
-            if info is None or (row["digest"] and row["digest"] != info["sha256"]):
+            broken = False
+            if row["state"] == "available":
+                broken = info is None or bool(row["digest"] and row["digest"] != info["sha256"])
+            elif row["state"] == "deleted" and info is not None and row["digest"] and row["digest"] != info["sha256"]:
+                broken = True
+            if broken:
                 links_ok = False
                 failures.append(f"link:{row['object_key']}")
 

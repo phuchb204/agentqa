@@ -79,6 +79,7 @@ def start_supervisor(
     taskboard_base_url: str,
     taskboard_control_token: str,
     lease_seconds: float = 300.0,
+    extra_args: list[str] | None = None,
 ) -> SupervisorProcess:
     token = secrets.token_urlsafe(16)
     parts = taskboard_base_url.split("//", 1)[1]
@@ -107,6 +108,8 @@ def start_supervisor(
         f"--fixture-base-url={taskboard_base_url}",
         f"--fixture-control-token={taskboard_control_token}",
     ]
+    if extra_args:
+        command.extend(extra_args)
     environment = {**sanitized_environment(), "AGENTQA_WORKSPACE_ROOT": str(REPO_ROOT)}
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
     process = subprocess.Popen(

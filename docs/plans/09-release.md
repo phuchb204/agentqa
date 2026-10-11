@@ -1,7 +1,7 @@
 # Gói 09 — Nghiệm thu và bàn giao sản phẩm
 
 - Ngày: 2026-10-06
-- Trạng thái: Chưa triển khai/nghiệm thu
+- Trạng thái: P31 đã triển khai và nghiệm thu offline (2026-10-11): acceptance 36/36 scenario (24 AC + 12 NFR), fault matrix 24/24, OS smoke windows+linux, UI E2E 6/6 scenario, workloads W1–W6 đạt objectives (p95 delivery 0.28s, p95 read 0.21s, zero duplicate), canary scan 0 matches. P32 chưa triển khai.
 - Plan: [rebuild-plan](rebuild-plan.md)
 - Nguồn: [Spec AC](../specs/product-spec.md), [design mapping](../design/acceptance-mapping.md), [acceptance plan](acceptance-plan.md)
 - Gate: G8

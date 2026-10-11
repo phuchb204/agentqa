@@ -2,7 +2,7 @@
 
 Nền tảng kiểm thử web bằng AI agent: biến yêu cầu nghiệp vụ thành ca kiểm thử, thực hiện trên trình duyệt thật, chạy hồi quy, phục hồi định vị và cung cấp kết luận truy được về bằng chứng.
 
-Gói 01 (nền runtime, Contracts/DSL, schema và typed client) đã được triển khai trong repo này; các gói 02–09 của [implementation plan](docs/plans/rebuild-plan.md) chưa triển khai. Trạng thái và commands thực tế xem mục Phát triển bên dưới.
+Gói 01 (nền runtime, Contracts/DSL, schema và typed client) đến gói 08 (benchmark, calibration, ba RQ) đã được triển khai trong repo này; gói 09 đã hoàn tất P31 (acceptance/fault/OS/UI/workloads) và đang thực hiện P32 (release/demo/tái lập, release candidate không full release). Trạng thái và commands thực tế xem mục Phát triển bên dưới và [CHANGELOG](CHANGELOG.md).
 
 ## Bắt đầu
 

@@ -45,8 +45,11 @@ async def drive_admin_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict
             await page.get_by_label("Env var").fill("OPENCODE_GO_API_KEY")
             await page.get_by_role("button", name="Thêm reference").click()
             await page.get_by_text("Đã tạo credential reference").wait_for()
-            if "v1" not in (await page.get_by_test_id("settings-references").inner_text()):
-                raise HarnessError("thiếu version v1 sau khi tạo reference")
+            try:
+                await expect(page.get_by_test_id("settings-references")).to_contain_text("v1", timeout=15000)
+            except Exception:
+                created_text = await page.get_by_test_id("settings-references").inner_text()
+                raise HarnessError(f"thiếu version v1 sau khi tạo reference: {created_text[:300]!r}") from None
             checks.append(HarnessCheck("settings-owner-create", True, "owner tạo credential reference qua UI"))
 
             await page.get_by_label("Rotate reference").fill("opencode_go")
@@ -75,9 +78,16 @@ async def drive_admin_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict
 
             await page.goto(f"{harness.web_base_url}/w/{workspace_id}/settings/providers")
             await page.get_by_test_id("settings-providers").wait_for()
+            try:
+                await page.locator('[data-testid="settings-providers"] [data-readiness="ready"]').first.wait_for(
+                    timeout=15000
+                )
+            except Exception:
+                providers_text = await page.get_by_test_id("settings-providers").inner_text()
+                raise HarnessError(
+                    f"provider readiness không phản ánh credential active: {providers_text[:300]!r}"
+                ) from None
             providers_text = await page.get_by_test_id("settings-providers").inner_text()
-            if "Đã cấu hình" not in providers_text:
-                raise HarnessError("provider readiness không phản ánh credential active")
             if "deepseek-v4.1-flash" not in providers_text or "jev-1.13-free" not in providers_text:
                 raise HarnessError("thiếu hai route cố định trong providers view")
             checks.append(HarnessCheck("provider-readiness", True, "readiness providers theo credential active"))
@@ -91,9 +101,11 @@ async def drive_admin_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict
             await page.get_by_test_id("settings-references").wait_for()
             await page.get_by_role("button", name="Thu hồi").first.click()
             await page.get_by_text("Đã thu hồi credential reference").wait_for()
-            references_after = await page.get_by_test_id("settings-references").inner_text()
-            if "revoked" not in references_after:
-                raise HarnessError("revoke không đổi status credential")
+            try:
+                await page.locator('[data-credential-status="revoked"]').first.wait_for(timeout=15000)
+            except Exception:
+                references_after = await page.get_by_test_id("settings-references").inner_text()
+                raise HarnessError(f"revoke không đổi status credential: {references_after[:300]!r}") from None
             checks.append(HarnessCheck("settings-owner-revoke", True, "revoke đổi status và vô hiệu grant"))
 
             await page.get_by_role("button", name="Menu người dùng").click()
@@ -105,13 +117,17 @@ async def drive_admin_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict
             await page.get_by_role("link", name="Cài đặt").wait_for()
             await page.goto(f"{harness.web_base_url}/w/{workspace_id}/settings/references")
             await page.get_by_test_id("settings-references").wait_for()
+            try:
+                await page.locator('p:has-text("chỉ đọc"), [data-testid="settings-permission-note"]').first.wait_for(
+                    timeout=15000
+                )
+            except Exception:
+                viewer_text = await page.get_by_test_id("settings-references").inner_text()
+                raise HarnessError(f"viewer không thấy thông báo quyền hạn: {viewer_text[:200]!r}") from None
             if await page.get_by_role("button", name="Thêm reference").count() > 0:
                 raise HarnessError("viewer thấy nút thêm reference")
             if await page.get_by_role("button", name="Rotate").count() > 0:
                 raise HarnessError("viewer thấy nút rotate")
-            viewer_text = await page.get_by_test_id("settings-references").inner_text()
-            if "chỉ đọc" not in viewer_text and "không có quyền" not in viewer_text:
-                raise HarnessError(f"viewer không thấy thông báo quyền hạn: {viewer_text[:200]!r}")
             checks.append(HarnessCheck("viewer-readonly-settings", True, "viewer chỉ đọc settings, ẩn form"))
 
             denied_status = await page.evaluate(

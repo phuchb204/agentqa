@@ -12,7 +12,6 @@ from agentqa.contracts.errors import ErrorCode
 from agentqa.platform.identity.models import IdentityError
 from agentqa.platform.storage import tables
 from agentqa.platform.storage.database import create_session_factory
-from agentqa.platform.storage.repositories import SequenceRepository
 from agentqa.platform.storage.scope import set_scope
 
 NOTIFY_CHANNEL = "agentqa_run_events"
@@ -52,33 +51,30 @@ class EventService:
         payload_doc: dict | None = None,
         recorded_at: datetime | None = None,
     ) -> AppendedEvent:
-        run_row = (
-            await session.execute(
-                sa.select(tables.runs.c.id)
-                .where(tables.runs.c.workspace_id == workspace_id, tables.runs.c.id == run_id)
-                .with_for_update()
-            )
-        ).one_or_none()
-        if run_row is None:
+        run_seq_result = await session.execute(
+            sa.update(tables.runs)
+            .where(tables.runs.c.workspace_id == workspace_id, tables.runs.c.id == run_id)
+            .values(next_run_seq=tables.runs.c.next_run_seq + 1)
+            .returning(tables.runs.c.next_run_seq)
+        )
+        run_seq = run_seq_result.scalar_one_or_none()
+        if run_seq is None:
             raise IdentityError(ErrorCode.NOT_FOUND, "Không tìm thấy run trong scope")
 
-        sequences = SequenceRepository(session)
-        run_seq = await sequences.allocate_run_seq(run_id)
         execution_seq: int | None = None
         if execution_id is not None:
-            execution_row = (
-                await session.execute(
-                    sa.select(tables.executions.c.id)
-                    .where(
-                        tables.executions.c.workspace_id == workspace_id,
-                        tables.executions.c.id == execution_id,
-                    )
-                    .with_for_update()
+            execution_seq_result = await session.execute(
+                sa.update(tables.executions)
+                .where(
+                    tables.executions.c.workspace_id == workspace_id,
+                    tables.executions.c.id == execution_id,
                 )
-            ).one_or_none()
-            if execution_row is None:
+                .values(next_execution_seq=tables.executions.c.next_execution_seq + 1)
+                .returning(tables.executions.c.next_execution_seq)
+            )
+            execution_seq = execution_seq_result.scalar_one_or_none()
+            if execution_seq is None:
                 raise IdentityError(ErrorCode.NOT_FOUND, "Không tìm thấy execution trong scope")
-            execution_seq = await sequences.allocate_execution_seq(execution_id)
 
         event_id = uuid4()
         month = current_payload_month()

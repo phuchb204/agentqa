@@ -234,6 +234,7 @@ function ProvidersSection({ workspaceId }: { workspaceId: string }) {
       .filter((item) => item.status === "active")
       .map((item) => item.credential_ref),
   );
+  const pending = referencesQuery.isPending;
   return (
     <section className="panel" data-testid="settings-providers">
       <h3 className="panel__title">Providers</h3>
@@ -241,6 +242,11 @@ function ProvidersSection({ workspaceId }: { workspaceId: string }) {
         Hai route cố định theo thiết kế; không có fallback trả phí. Readiness dựa trên credential
         reference đang active.
       </p>
+      {referencesQuery.isError ? (
+        <p className="muted" role="status">
+          Không đọc được credential references
+        </p>
+      ) : null}
       <table>
         <thead>
           <tr>
@@ -258,8 +264,8 @@ function ProvidersSection({ workspaceId }: { workspaceId: string }) {
                 <td>{provider.route}</td>
                 <td>{provider.model}</td>
                 <td>{provider.refs.join(", ")}</td>
-                <td data-readiness={ready ? "ready" : "missing"}>
-                  {ready ? "Đã cấu hình" : "Chưa cấu hình"}
+                <td data-readiness={pending ? "loading" : ready ? "ready" : "missing"}>
+                  {pending ? "Đang tải..." : ready ? "Đã cấu hình" : "Chưa cấu hình"}
                 </td>
               </tr>
             );

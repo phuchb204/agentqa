@@ -206,11 +206,20 @@ class SeedResult:
 
 
 class UiHarness:
-    def __init__(self, *, scenario: str = "authoring", build_web: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        scenario: str = "authoring",
+        build_web: bool = True,
+        agent_models: bool = False,
+        agent_script: str | None = None,
+    ) -> None:
         if scenario not in ("authoring", "live", "healing", "reporting", "admin", "experiments"):
             raise HarnessError(f"scenario không hỗ trợ: {scenario}")
         self.scenario = scenario
         self.build_web = build_web
+        self.agent_models = agent_models
+        self.agent_script = agent_script
         self.healing_profile = None
         self.db_name = f"agentqa_ui_{secrets.token_hex(4)}"
         self.workspace_root = REPO_ROOT / "artifacts" / "ui-e2e" / self.db_name
@@ -261,12 +270,18 @@ class UiHarness:
         self.seed = _run_db(self._seed())
         self.log(f"seeded workspace {self.seed.workspace_id}")
 
+        supervisor_extra_args: list[str] = []
+        if self.agent_models:
+            supervisor_extra_args.append("--agent-models=fake")
+        if self.agent_script:
+            supervisor_extra_args.append(f"--agent-script={self.agent_script}")
         self.supervisor = start_supervisor(
             dsn=self.dsn_by_role[ROLE_SUPERVISOR],
             workspace_id=self.seed.workspace_id,
             principal_id=self.seed.user_id,
             taskboard_base_url=self.taskboard_base_url,
             taskboard_control_token=self.taskboard_control_token,
+            extra_args=supervisor_extra_args or None,
         )
         self.log(f"supervisor port {self.supervisor.port}")
 

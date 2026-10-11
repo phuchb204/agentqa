@@ -20,6 +20,6 @@ playwright-report/
 test-results/
 .reset-staging/
 .opencode/execution/
-artifacts/
+/artifacts/
 *.tsbuildinfo
 
