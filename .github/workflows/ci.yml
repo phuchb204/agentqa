@@ -28,8 +28,15 @@ jobs:
         with:
           version: "0.10.7"
           enable-cache: true
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
       - run: uv python install
       - run: uv sync --locked
+      - run: pnpm --dir apps/web install --frozen-lockfile
+      - run: pnpm --dir apps/web build
       - run: uv run --locked playwright install chromium --with-deps
       - run: uv run --locked ruff check .
       - run: uv run --locked ruff format --check .
@@ -63,8 +70,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 24
