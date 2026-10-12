@@ -248,15 +248,18 @@ class UiHarness:
         self.log_lines.append(line)
 
     def start(self) -> None:
-        self.log("docker compose up")
-        subprocess.run(
-            ["docker", "compose", "-f", "infra/compose.test.yml", "up", "-d", "--wait"],
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-        )
         admin = admin_dsn()
-        _run_db(bootstrap_profile(admin))
+        try:
+            _run_db(bootstrap_profile(admin))
+        except Exception:
+            self.log("docker compose up")
+            subprocess.run(
+                ["docker", "compose", "-f", "infra/compose.test.yml", "up", "-d", "--wait"],
+                cwd=REPO_ROOT,
+                check=True,
+                capture_output=True,
+            )
+            _run_db(bootstrap_profile(admin))
         _run_db(create_database(admin, self.db_name))
         self.dsn_by_role = {
             ROLE_API: role_dsn(ROLE_API, self.db_name),
