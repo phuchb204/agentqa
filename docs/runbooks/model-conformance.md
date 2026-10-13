@@ -1,7 +1,7 @@
 # Runbook — Model conformance (P15)
 
-- Ngày: 2026-10-10
-- Trạng thái: Tool và tests offline đã có; live receipts chưa chạy (chưa có key thật trong phiên triển khai)
+- Ngày: 2026-10-12
+- Trạng thái: Tool và tests offline đã có; live receipts đã chạy và refresh lần cuối 2026-10-12 — Zen verified, Go image giữ blocked (gate ảnh đóng)
 - Phạm vi: `tools/model_conformance.py`, registry `src/agentqa/platform/models/capabilities.py`, receipts dưới `artifacts/model-capabilities/`
 - Liên quan: [execution-and-models](../design/execution-and-models.md) §9, [design evidence](../research/design-evidence.md) §7, [plan gói 04](../plans/04-models-and-observation.md) P15
 
@@ -43,6 +43,13 @@ uv run --env-file .env python tools/model_conformance.py --provider opencode_go 
 - Quan sát thêm: route Go chấp nhận `response_format={"type":"json_object"}` (HTTP 200, JSON đúng) — cơ sở để P14/P29 cân nhắc bật structured-output flag sau conformance bổ sung; mặc định adapter vẫn là structured prompt + strict parse.
 - `prompt_tokens_details.cached_tokens` hiện diện (giá trị 0) → cache semantics verified; `reasoning_tokens` chưa vào contracts `Usage` (P22 sẽ quyết định field/ledger riêng).
 
+### Finding live 2026-10-12 (refresh, master)
+
+- Zen `jev-1.13-free`: `verified` cho text/structured/usage như các lần trước (cache/image/session `unsupported` đúng thiết kế); receipt hết hạn 2026-10-19.
+- Go `deepseek-v4.1-flash`: 5/6 capability `verified` (text/structured/usage/cache/session); image tiếp tục `blocked` với reason `image_marker_mismatch:0` ở cả budget 4096 lẫn 8192 — request hợp lệ nhưng model trả `{"squares": 0}` thay vì 3, khác reason lần 10-11 (`provider_schema:go_image:Output không phải JSON hợp lệ`).
+- Tool và adapter không đổi từ `b1c5d09`; vì 8192 cũng fail nên nguyên nhân không chỉ là margin budget — image Go hiện không ổn định.
+- Quyết định: giữ gate ảnh đóng (fail closed) và RQ1 vision-first blocked, không đổi model/route. Cần điều tra phía provider hoặc bổ sung probe/retry ổn định rồi chạy lại conformance trước khi mở vision.
+
 ## 4. Receipts và registry
 
 - Receipt JSON nằm trong `artifacts/model-capabilities/` (Git bỏ qua), tên `<route>-<receipt_id>.json`.
@@ -55,4 +62,4 @@ uv run --env-file .env python tools/model_conformance.py --provider opencode_go 
 
 - Offline: `uv run --locked pytest -q tests/models/test_capability_receipts.py` phủ parser/invalid/expired, budget, key thiếu, auth lỗi, marker mismatch, sanitization, và chạy `--live` pipeline bằng `httpx.MockTransport` (không egress).
 - CI/pytest thường không chạy `--live` và không đọc `.env`.
-- Receipts live 2026-10-10 (master, budgets trong receipt): Zen `verified`; Go `verified` đầy đủ 6 capability ở budget 4096; receipt Go ở budget 2048 giữ trạng thái `blocked` cho image như bằng chứng finding budget. Receipt nằm trong `artifacts/model-capabilities/` (Git bỏ qua); không chứa key.
+- Receipts live 2026-10-10 (master, budgets trong receipt): Zen `verified`; Go `verified` đầy đủ 6 capability ở budget 4096; receipt Go ở budget 2048 giữ trạng thái `blocked` cho image như bằng chứng finding budget. Refresh 2026-10-12: Zen `verified`; Go `image=blocked` ở cả budget 4096 và 8192 (`image_marker_mismatch:0`); receipts mới hết hạn 2026-10-19. Receipt nằm trong `artifacts/model-capabilities/` (Git bỏ qua); không chứa key.

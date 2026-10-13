@@ -1,6 +1,6 @@
 # Runbook — Kiểm tra release (P32.1 + P32.4)
 
-- Ngày: 2026-10-11
+- Ngày: 2026-10-12
 - Trạng thái: Tool và SBOM đã triển khai; receipts đính kèm
 - Liên quan: [plan gói 09](../plans/09-release.md), [nghiên cứu tái lập](research-reproduction.md), [demo](demo.md)
 
@@ -23,7 +23,7 @@ Tool kiểm:
 Kết quả: **structural pass, nhưng không phải full release**:
 
 - `full_release=false` do (1) production healing profile provisional (`bound_upper=0.776 > ceiling 0.01`) và (2) P32 artifacts còn thiếu tại thời điểm kiểm.
-- Live receipts Go/Zen còn hạn (đến 2026-10-16/18); image Go `blocked` theo receipt mới nhất — RQ1 vision-first giữ blocked, không tự đổi sang text-only.
+- Live receipts Go/Zen đã refresh 2026-10-12, còn hạn đến 2026-10-19; image Go `blocked` (`image_marker_mismatch:0` ở budget 4096 và 8192) — RQ1 vision-first giữ blocked, không tự đổi sang text-only.
 
 Xem: `artifacts/release/{manifest,validation,sbom}.json` và receipt `.opencode/execution/release-20261011/receipts/t8-check-release.log`.
 
