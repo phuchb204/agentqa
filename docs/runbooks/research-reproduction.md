@@ -129,6 +129,18 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
   (`test_verification_run_uses_exact_fixture_seeds_and_distinct_items`). Manifest v2 không đổi nên
   pre-register vẫn giữ nguyên hiệu lực.
 
+### Finding live v2 lần 2 — winner v1 bị bác bỏ (2026-10-19)
+
+- 324/324 trials scorable, bound 0.379 trên ceiling 0.01 → **provisional** (`bound_exceeds_ceiling`).
+  Receipt `artifacts/calibration/healing-commandcode-v2.json` (criteria trial/1, measured).
+- Phân bố lỗi nói lên đúng điều cần đo: `taskboard-delete` 108/108 correct, `taskboard-pilot` 108/108
+  correct, `taskboard-ambiguous` 108/108 **false heal** (đáng lẽ phải refuse khi nhãn trùng).
+  Winner v1 (`heuristic-0.5-0.1-24`) an toàn trên item cố định nhưng chữa bừa khi item varies — protocol v2
+  đã làm đúng việc của nó: bác bỏ profile chưa đủ an toàn thay vì cho qua.
+- Bước tiếp theo theo protocol: verify ứng viên ngưỡng chặt hơn (`heuristic-0.6-0.15-24`, manifest v3
+  pre-register riêng `manifest-commandcode-v3.yaml`), kỳ vọng tăng refusal đúng trên ambiguous mà không
+  mất correct heal.
+
 ### Giới hạn cấu trúc v1 (cả hai pair, 2026-10-19)
 
 - Bound tính theo đơn vị family: `profiles.py:_selection_units` giữ một trial đầu tiên cho mỗi family, và
