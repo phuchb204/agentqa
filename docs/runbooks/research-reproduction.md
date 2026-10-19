@@ -168,6 +168,17 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
 - Đây là verified auto-healing profile đầu tiên của repo. Bật production auto-healing (gate strict hay
   allow_healing) là quyết định deployment riêng, không tự động theo receipt ready.
 
+### Finding live v7 — cascade READY (2026-10-19)
+
+- 324/324 scorable, 0 errors, 108 model calls (Jev consultations) → bound **0.0092** → **ready**.
+  Receipt `artifacts/calibration/healing-commandcode-v7.json` (criteria trial/1, measured).
+- Phân bố: delete/pilot 108/108 correct heal mỗi family, ambiguous 108/108 **refusal**, 0 false heal.
+  Healer-level check chặn được cả đường model ranker (v6 false heal 72/72 không còn tái diễn).
+- Lưu ý chi phí: check đặt sau ranker nên Jev vẫn được gọi trước khi refuse (108 calls/324 trials).
+  Muốn tiết kiệm có thể kiểm tra duplicate trước khi gọi model — để dành tối ưu sau, không đổi semantics lúc này.
+- Với v5 (heuristic ready) + v7 (cascade ready), cặp commandcode có đủ profile verified cho cả hai ranker
+  chính. Bật production auto-healing (và chọn ranker/profile nào) là quyết định deployment.
+
 ### Pre-register v5 — verify lại sau fix scope-blind (2026-10-19)
 
 - Manifest `benchmarks/calibration/manifest-commandcode-v5.yaml` (`profile_id: healing-commandcode-v5`,
