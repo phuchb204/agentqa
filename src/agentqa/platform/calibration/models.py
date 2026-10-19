@@ -12,6 +12,7 @@ from agentqa.contracts.values import StrictModel
 MANIFEST_SCHEMA = "calibration-manifest/1"
 RECEIPT_SCHEMA = "calibration-receipt/1"
 CRITERIA_VERSION = "acceptance-refusal-loss/1"
+VERIFICATION_CRITERIA_VERSION = "acceptance-refusal-loss-trial/1"
 
 
 class QualityPolicy(StrictModel):
@@ -40,6 +41,37 @@ class SearchSpace(StrictModel):
     min_score: list[float] = Field(default_factory=lambda: [0.5, 0.55, 0.6])
     margin_min: list[float] = Field(default_factory=lambda: [0.1, 0.15])
     max_candidates: list[int] = Field(default_factory=lambda: [24])
+
+
+class VerificationPlan(StrictModel):
+    candidate_id: str
+    ranker: str
+    min_score: float = 0.55
+    margin_min: float = 0.15
+    max_candidates: int = 24
+    families: list[str] = Field(default_factory=list)
+    items_per_family: int = 0
+    seeds: list[int] = Field(default_factory=lambda: [20261010])
+    shuffle_seed: int = 20261010
+
+    @model_validator(mode="after")
+    def validate_plan(self) -> VerificationPlan:
+        if not self.families:
+            raise AgentQAValidationError(
+                [field_error(("verification", "families"), ErrorCode.INPUT_INVALID, "families rỗng")]
+            )
+        if self.items_per_family <= 0:
+            raise AgentQAValidationError(
+                [field_error(("verification", "items_per_family"), ErrorCode.INPUT_INVALID, "phải dương")]
+            )
+        if not self.seeds:
+            raise AgentQAValidationError(
+                [field_error(("verification", "seeds"), ErrorCode.INPUT_INVALID, "seeds rỗng")]
+            )
+        return self
+
+    def trial_count(self) -> int:
+        return len(self.families) * self.items_per_family * len(self.seeds)
 
 
 class Budgets(StrictModel):
@@ -74,6 +106,7 @@ class CalibrationManifest(StrictModel):
     quality_policy: QualityPolicy = QualityPolicy()
     budgets: Budgets
     seeds: list[int] = Field(default_factory=lambda: [20261010])
+    verification: VerificationPlan | None = None
 
     @model_validator(mode="after")
     def validate_splits(self) -> CalibrationManifest:

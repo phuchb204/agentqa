@@ -834,3 +834,139 @@ def run_live_calibration(
         "skipped": skipped,
         "winner": winner.candidate_id,
     }
+
+
+def _render_template(value: Any, *, index: int, seed: int) -> Any:
+    if isinstance(value, str):
+        return value.replace("{index}", f"{index:03d}").replace("{seed}", str(seed))
+    if isinstance(value, dict):
+        return {key: _render_template(item, index=index, seed=seed) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_render_template(item, index=index, seed=seed) for item in value]
+    return value
+
+
+def expand_verification_trials(plan) -> list[tuple[str, int, int]]:
+    import random
+
+    combos = [
+        (family, item, seed) for family in plan.families for item in range(plan.items_per_family) for seed in plan.seeds
+    ]
+    shuffler = random.Random(plan.shuffle_seed)
+    shuffler.shuffle(combos)
+    return combos
+
+
+def run_live_verification(
+    manifest,
+    harness: LiveResearchHarness,
+    oracle_module,
+    *,
+    trial_limit: int | None = None,
+) -> dict[str, Any]:
+    from agentqa.contracts.calibration import CalibrationProfile, RankerKind
+    from agentqa.platform.calibration.models import CalibrationTrial, CandidateResult, TrialLabels
+    from agentqa.platform.calibration.profiles import build_verification_receipt
+    from agentqa.platform.statistics.samples import sample_size_from_conservative_bound
+
+    plan = manifest.verification
+    if plan is None:
+        raise ValueError("manifest thiếu verification plan")
+    profile = CalibrationProfile(
+        profile_id=f"verify-{plan.candidate_id}",
+        version="verify",
+        ranker=RankerKind(plan.ranker),
+        min_score=float(plan.min_score),
+        margin_min=float(plan.margin_min),
+        max_candidates=int(plan.max_candidates),
+    )
+    apps = {app.name: app for app in harness.apps}
+    case_revisions: dict[str, UUID] = {}
+    trials: list[CalibrationTrial] = []
+    calls_used = 0
+    skipped: list[str] = []
+    combos = expand_verification_trials(plan)
+    if trial_limit is not None:
+        combos = combos[:trial_limit]
+
+    def ensure_case(spec: dict[str, Any]) -> UUID:
+        case_key = str(spec["case_key"])
+        if case_key not in case_revisions:
+            document = _case_document(case_key)
+            case_revisions[case_key] = harness.seed_case(logical_key=case_key, document=document)
+        return case_revisions[case_key]
+
+    for family, item, seed in combos:
+        if calls_used >= manifest.budgets.max_calls:
+            skipped.append(f"{family}:{item}:{seed}:budget_exceeded")
+            continue
+        spec = LIVE_CALIBRATION_CASES.get(family)
+        if spec is None:
+            skipped.append(f"{family}:{item}:{seed}:no_live_mapping")
+            continue
+        app = apps.get(str(spec["app"]))
+        if app is None:
+            skipped.append(f"{family}:{item}:{seed}:app_missing")
+            continue
+        namespace = f"calv-{family}-{item:03d}-{seed}-{uuid4().hex[:6]}"
+        armed = harness.arm_mutation(app, namespace, str(spec["operator"]), dict(spec["params"]))
+        if not armed.get("armed"):
+            skipped.append(f"{family}:{item}:{seed}:variant_{armed.get('reason')}")
+            continue
+        revision = ensure_case(spec)
+        run_params = dict(_render_template(dict(spec["run_params"]), index=item, seed=seed))
+        run_params.setdefault("item_name", f"Vật hiệu chuẩn {item:03d}-{seed}")
+        environment = harness.seed_environment(
+            app=app,
+            namespace=namespace,
+            parameters=run_params,
+            fixture_seed=f"{spec['seed']}-{seed}",
+        )
+        run = harness.run_case(
+            case_revision_id=revision,
+            environment_revision_id=environment,
+            policy="replay_healing",
+            observation="semantic",
+            healing_profile=profile,
+        )
+        calls_used += int(run.usage.get("calls", 0))
+        oracle_record = oracle_module.variant_oracle_record(
+            {
+                "variant_token": f"calv-{digest_content([plan.candidate_id, family, item, seed])[:16]}",
+                "case_key": str(spec["case_key"]),
+                "app": app.name,
+                "operator": {"name": str(spec["operator"]), "version": 1, "group": "benign"},
+                "params": dict(spec["params"]),
+                "applied_patch": dict(spec["params"]),
+                "valid": True,
+            }
+        )
+        scoring = harness.score_run(run.run_id, oracle_record)
+        trials.append(
+            CalibrationTrial(
+                candidate_id=plan.candidate_id,
+                case_key=f"{family}:verify-{item:03d}-{seed}",
+                family=family,
+                split="verification",
+                labels=TrialLabels(**_labels_from_scoring(scoring)),
+            )
+        )
+    receipt = build_verification_receipt(
+        manifest,
+        CandidateResult(
+            candidate_id=plan.candidate_id,
+            ranker=RankerKind(plan.ranker),
+            params={"min_score": plan.min_score, "margin_min": plan.margin_min, "max_candidates": plan.max_candidates},
+        ),
+        trials,
+        sample_size=sample_size_from_conservative_bound(
+            manifest.quality_policy.max_false_heal_rate, confidence=manifest.quality_policy.confidence
+        ).as_dict(),
+    )
+    return {
+        "receipt": receipt,
+        "trials": [trial.model_dump(mode="json") for trial in trials],
+        "calls_used": calls_used,
+        "skipped": skipped,
+        "winner": plan.candidate_id,
+    }

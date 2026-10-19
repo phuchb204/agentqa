@@ -102,7 +102,23 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
 - Dữ liệu là measured và hợp lệ; không nới ngưỡng để đạt. Production auto-healing cho cặp Command Code
   vẫn chờ calibration đạt ceiling; chi tiết trials trong `artifacts/research/calibration-healing-commandcode-*/trials.json`.
 
-### Giới hạn cấu trúc (cả hai pair, 2026-10-19)
+### Protocol v2 — verification winner-only, đơn vị trial (pre-register 2026-10-19)
+
+- Vấn đề: bound v1 tính theo đơn vị family, live mapping chỉ có 2 families cho split calibration nên
+  units tối đa là 2 (bound tốt nhất 0.776) — chạy thêm repetitions không giúp. Đây không phải lỗi code.
+- Quyết định (hướng B): protocol mới, đơn vị bound là trial. Winner v1 cả hai pair là `heuristic-0.5-0.1-24`.
+  Manifest v2 (`manifest-v2.yaml` cho OpenCode, `manifest-commandcode-v2.yaml` cho Command Code) giữ nguyên
+  splits/search space/budgets, thêm `verification`: winner + 3 families × 54 items × 2 seeds = 324 trials,
+  thứ tự xáo trộn theo `shuffle_seed` khai báo trước, mỗi trial namespace/fixture/seed riêng, item/label
+  khác nhau theo `{index}`/`{seed}`.
+- Receipt v2 dùng `criteria_version=acceptance-refusal-loss-trial/1`, bound Clopper-Pearson một phía trên
+  tổng trials scorable; `ready` khi và chỉ khi bound ≤ 0.01 và ≥ 2 families. Tiêu chí chốt trước khi chạy;
+  receipts v1 giữ provisional theo luật cũ, không viết lại.
+- Giới hạn khai báo: v2 đo repeatability trên families đã map, chưa đo khái quát hóa cross-family.
+- Lệnh chạy: `agentqa calibration execute --manifest benchmarks/calibration/manifest-commandcode-v2.yaml --live --stage verify`
+  (và `manifest-v2.yaml` cho cặp OpenCode, với `AGENTQA_MODEL_PAIR` khớp manifest).
+
+### Giới hạn cấu trúc v1 (cả hai pair, 2026-10-19)
 
 - Bound tính theo đơn vị family: `profiles.py:_selection_units` giữ một trial đầu tiên cho mỗi family, và
   `build_receipt` đòi ít nhất 2 groups độc lập. Live mapping hiện tại (`live.py:LIVE_CALIBRATION_CASES`) chỉ có
