@@ -50,17 +50,36 @@ SCRATCH_SEEDS = {
 }
 
 
-def go_image_verified() -> bool:
+def chat_image_verified(pair: str) -> bool:
+    from datetime import UTC, datetime
+
+    from agentqa.models.routes import MODEL_PAIRS
+
+    try:
+        chat_route, _ = MODEL_PAIRS[pair]
+    except KeyError:
+        return False
     if not CAPABILITY_DIR.is_dir():
         return False
-    receipts = sorted(CAPABILITY_DIR.glob("opencode_go-*.json"), key=lambda path: path.stat().st_mtime)
+    receipts = sorted(CAPABILITY_DIR.glob(f"{chat_route.value}-*.json"), key=lambda path: path.stat().st_mtime)
     if not receipts:
         return False
     try:
         document = json.loads(receipts[-1].read_text(encoding="utf-8"))
     except ValueError:
         return False
+    expires = document.get("expires_at")
+    try:
+        moment = datetime.fromisoformat(str(expires).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if moment < datetime.now(UTC):
+        return False
     return (document.get("capabilities") or {}).get("image") == "verified"
+
+
+def go_image_verified() -> bool:
+    return chat_image_verified("opencode")
 
 
 def corpus_cases() -> dict[str, tuple[str, dict[str, Any]]]:
@@ -255,7 +274,7 @@ def run_live_experiment(
     *,
     slot_limit: int | None = None,
 ) -> dict[str, Any]:
-    image_verified = go_image_verified()
+    image_verified = chat_image_verified(manifest.budgets.model_pair)
     runner = LiveSlotRunner(
         harness=harness,
         manifest=manifest,

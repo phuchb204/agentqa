@@ -75,3 +75,14 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
   confidence 0.95) trên ceiling `0.01` → status **provisional** (`bound_exceeds_ceiling`).
 - Dữ liệu là measured và hợp lệ; không nới ngưỡng để đạt. Production auto-healing cho cặp Command Code
   vẫn chờ calibration đạt ceiling; chi tiết trials trong `artifacts/research/calibration-healing-commandcode-*/trials.json`.
+
+### Giới hạn cấu trúc (cả hai pair, 2026-10-19)
+
+- Bound tính theo đơn vị family: `profiles.py:_selection_units` giữ một trial đầu tiên cho mỗi family, và
+  `build_receipt` đòi ít nhất 2 groups độc lập. Live mapping hiện tại (`live.py:LIVE_CALIBRATION_CASES`) chỉ có
+  3 families trên app taskboard, trong đó split `calibration` chỉ dùng 2 (`taskboard-delete`, `taskboard-ambiguous`)
+  nên số units tối đa là 2, bound tốt nhất có thể là 0.776 trên ceiling 0.01.
+- Chạy thêm repetitions trên cùng families không tăng units. Thoát provisional đòi hỏi hoặc thêm families
+  live-mapped mới (operators + oracle cho shopflow/canvasdesk), hoặc định nghĩa lại đơn vị bound — cả hai đều
+  là thay đổi protocol nghiên cứu, phải chốt mẫu số trước khi chạy theo `research-questions.md`, không tự đổi
+  sau khi xem kết quả.

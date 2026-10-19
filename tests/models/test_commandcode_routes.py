@@ -151,6 +151,29 @@ def test_cli_guard_rejects_pair_mismatch(monkeypatch: pytest.MonkeyPatch) -> Non
         _require_model_pair("commandcode")
 
 
+def test_chat_image_gate_reads_pair_receipt(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    from agentqa.platform.experiments import live as experiment_live
+
+    def write_receipt(name: str, image: str, expires: str) -> None:
+        (tmp_path / name).write_text(
+            json.dumps({"capabilities": {"image": image}, "expires_at": expires}), encoding="utf-8"
+        )
+
+    monkeypatch.setattr(experiment_live, "CAPABILITY_DIR", tmp_path)
+    write_receipt("commandcode_chat-new.json", "verified", "2099-01-01T00:00:00Z")
+    assert experiment_live.chat_image_verified("commandcode") is True
+    assert experiment_live.chat_image_verified("opencode") is False
+    assert experiment_live.chat_image_verified("acme") is False
+    (tmp_path / "commandcode_chat-new.json").unlink()
+    write_receipt("commandcode_chat-old.json", "verified", "2020-01-01T00:00:00Z")
+    assert experiment_live.chat_image_verified("commandcode") is False
+    (tmp_path / "commandcode_chat-old.json").unlink()
+    write_receipt("commandcode_chat-blocked.json", "blocked", "2099-01-01T00:00:00Z")
+    assert experiment_live.chat_image_verified("commandcode") is False
+
+
 @pytest.mark.asyncio
 async def test_ledgered_composition_keeps_commandcode_routes() -> None:
     ledger = CallLedger()
