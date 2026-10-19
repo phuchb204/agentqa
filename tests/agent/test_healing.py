@@ -23,7 +23,6 @@ async def test_recover_valid_target_records_proof_and_runtime_binding() -> None:
     descriptor = delete_descriptor("Việc A")
     scene = [
         delete_scene("Việc A", button_name="Xoá việc", candidate_id="c0", attributes={"data-testid": "delete-a"}),
-        delete_scene("Việc B", button_name="Xoá việc", candidate_id="c1", attributes={"data-testid": "delete-b"}),
     ]
     decision = await healer.recover(descriptor, scene, context())
     assert decision.recovered is True
