@@ -46,6 +46,21 @@ class Budgets(StrictModel):
     max_calls: int
     max_cost_usd: float
     routes: dict[str, str]
+    model_pair: str = "opencode"
+
+    @model_validator(mode="after")
+    def validate_pair(self) -> Budgets:
+        from agentqa.models.routes import MODEL_PAIRS
+
+        if self.model_pair not in MODEL_PAIRS:
+            raise AgentQAValidationError(
+                [
+                    field_error(
+                        ("budgets", "model_pair"), ErrorCode.INPUT_INVALID, f"pair không hỗ trợ: {self.model_pair}"
+                    )
+                ]
+            )
+        return self
 
 
 class CalibrationManifest(StrictModel):

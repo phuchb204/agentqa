@@ -51,9 +51,27 @@ uv run --env-file .env agentqa experiment execute --manifest benchmarks/experime
 uv run --env-file .env agentqa experiment execute --manifest benchmarks/experiments/rq3.yaml --live
 ```
 
+Biến thể cặp Command Code (cần `AGENTQA_CMD_API_KEY` và `AGENTQA_MODEL_PAIR=commandcode` khớp `budgets.model_pair` trong manifest, CLI từ chối mismatch):
+
+```text
+uv run --env-file .env agentqa experiment execute --manifest benchmarks/experiments/rq1-commandcode.yaml --live
+uv run --env-file .env agentqa experiment execute --manifest benchmarks/experiments/rq2-commandcode.yaml --live
+uv run --env-file .env agentqa experiment execute --manifest benchmarks/experiments/rq3-commandcode.yaml --live
+```
+
 Kết quả RQ có thể bác bỏ giả thuyết; điều đó không cho phép sửa cách chấm.
 
 ## 5. Calibration hiện tại
 
-Receipt mới nhất: `artifacts/calibration/healing-default-1.json` — `bound_upper=0.776` trên ceiling `0.01`,
+Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.json` — `bound_upper=0.776` trên ceiling `0.01`,
 `evidence=measured` với `groups=2`. Profile giữ **provisional**; không dùng làm verified auto-healing profile.
+
+### Finding live 2026-10-19 (cặp Command Code, key GOAT)
+
+- Manifest `benchmarks/calibration/manifest-commandcode.yaml` (`profile_id: healing-commandcode`), chạy
+  `agentqa calibration execute --live` với `AGENTQA_MODEL_PAIR=commandcode`: 37 trials, 18 model calls,
+  receipt `artifacts/calibration/healing-commandcode-1.json`.
+- Kết quả: `evidence=measured`, `sample_units=2`, `groups=2`, `bound_upper=0.776` (Clopper-Pearson một phía,
+  confidence 0.95) trên ceiling `0.01` → status **provisional** (`bound_exceeds_ceiling`).
+- Dữ liệu là measured và hợp lệ; không nới ngưỡng để đạt. Production auto-healing cho cặp Command Code
+  vẫn chờ calibration đạt ceiling; chi tiết trials trong `artifacts/research/calibration-healing-commandcode-*/trials.json`.

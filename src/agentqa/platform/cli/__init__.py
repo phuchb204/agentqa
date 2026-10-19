@@ -368,6 +368,17 @@ def _command_calibration_status(args: argparse.Namespace, *, as_json: bool) -> i
     return EXIT_OK
 
 
+def _require_model_pair(manifest_pair: str) -> None:
+    import os
+
+    active = os.environ.get("AGENTQA_MODEL_PAIR", "opencode")
+    if active != manifest_pair:
+        raise CliInputError(
+            f"Manifest pin pair '{manifest_pair}' nhưng worker đang dùng '{active}' "
+            "(đặt AGENTQA_MODEL_PAIR cho khớp, không tự đổi pair khi chạy)"
+        )
+
+
 def _command_calibration_execute(args: argparse.Namespace, *, as_json: bool) -> int:
     import time
 
@@ -393,6 +404,7 @@ def _command_calibration_execute(args: argparse.Namespace, *, as_json: bool) -> 
     if not path.is_file():
         raise CliInputError(f"Không tìm thấy manifest '{args.manifest}'")
     manifest = load_manifest(path)
+    _require_model_pair(manifest.budgets.model_pair)
     oracle_module = load_private_oracle()
     apps = start_benchmark_apps()
     root = Path("artifacts") / "research" / f"calibration-{manifest.profile_id}-{int(time.time())}"
@@ -490,6 +502,7 @@ def _command_experiment_execute(args: argparse.Namespace, *, as_json: bool) -> i
     if not path.is_file():
         raise CliInputError(f"Không tìm thấy manifest '{args.manifest}'")
     manifest = ExperimentManifest.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    _require_model_pair(manifest.budgets.model_pair)
     oracle_module = load_private_oracle()
     apps = start_benchmark_apps()
     root = Path("artifacts") / "research" / f"harness-{manifest.experiment_id}-{int(time.time())}"

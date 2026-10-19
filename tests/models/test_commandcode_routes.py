@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from tools import model_conformance as mc
 
@@ -100,6 +102,53 @@ def test_conformance_offline_requires_output_budget_for_commandcode_chat() -> No
             )
         )
     assert excinfo.value.code == 64
+
+
+def test_manifest_budgets_default_to_opencode_pair() -> None:
+    from agentqa.platform.calibration.models import Budgets as CalibrationBudgets
+    from agentqa.platform.experiments.manifests import Budgets as ExperimentBudgets
+
+    calibration = CalibrationBudgets(max_calls=10, max_cost_usd=1.0, routes={"opencode_go": "m"})
+    assert calibration.model_pair == "opencode"
+    experiment = ExperimentBudgets(max_calls=10, max_cost_usd=1.0)
+    assert experiment.model_pair == "opencode"
+
+
+def test_manifest_budgets_reject_unknown_pair() -> None:
+    from agentqa.contracts.errors import AgentQAValidationError
+    from agentqa.platform.calibration.models import Budgets as CalibrationBudgets
+    from agentqa.platform.experiments.manifests import Budgets as ExperimentBudgets
+
+    with pytest.raises(AgentQAValidationError):
+        CalibrationBudgets(max_calls=10, max_cost_usd=1.0, routes={"x": "y"}, model_pair="acme")
+    with pytest.raises(AgentQAValidationError):
+        ExperimentBudgets(max_calls=10, max_cost_usd=1.0, model_pair="acme")
+
+
+def test_commandcode_yaml_manifests_pin_commandcode_pair() -> None:
+    import yaml
+
+    from agentqa.platform.calibration import load_manifest
+    from agentqa.platform.experiments import ExperimentManifest
+
+    repo = Path(__file__).resolve().parents[2]
+    calibration = load_manifest(repo / "benchmarks" / "calibration" / "manifest-commandcode.yaml")
+    assert calibration.budgets.model_pair == "commandcode"
+    assert set(calibration.budgets.routes) == {"commandcode_chat", "commandcode_systemone"}
+    for name in ("rq1-commandcode.yaml", "rq2-commandcode.yaml", "rq3-commandcode.yaml"):
+        document = yaml.safe_load((repo / "benchmarks" / "experiments" / name).read_text(encoding="utf-8"))
+        manifest = ExperimentManifest.model_validate(document)
+        assert manifest.budgets.model_pair == "commandcode"
+        assert set(manifest.budgets.routes) == {"commandcode_chat", "commandcode_systemone"}
+
+
+def test_cli_guard_rejects_pair_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentqa.platform.cli import CliInputError, _require_model_pair
+
+    monkeypatch.setenv("AGENTQA_MODEL_PAIR", "opencode")
+    _require_model_pair("opencode")
+    with pytest.raises(CliInputError):
+        _require_model_pair("commandcode")
 
 
 @pytest.mark.asyncio

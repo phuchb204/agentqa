@@ -21,12 +21,13 @@ Tài liệu này định nghĩa hành vi bắt buộc, chưa chọn framework, d
 | D-02 | Có hai policy `llm` và `jev_cascade`; mặc định sản phẩm dùng cascade |
 | D-03 | Jev: OpenCode Zen, `jev-1.13-free`, System One |
 | D-04 | LLM: OpenCode Go, `deepseek-v4.1-flash`, Chat Completions; dùng cùng model cho nhánh LLM của cascade |
-| D-05 | Chỉ triển khai hai route đã chọn; không tự thêm provider/model hay chuyển sang route trả phí |
+| D-05 | Chỉ triển khai hai route OpenCode ban đầu; mở rộng provider sau này bằng spec thay đổi (đã áp dụng: cặp Command Code ở D-11, ADR 0003) |
 | D-06 | Giữ năm lớp Contracts, Models, Agent, Verify, Platform; thiết kế bên trong mới hoàn toàn |
 | D-07 | Replay là mặc định cho ca đã lưu; agent là chế độ tạo/thực thi linh hoạt riêng |
 | D-08 | Kỳ vọng được giữ nguyên trong từng revision; phục hồi không được sửa nghĩa kiểm thử |
 | D-09 | Web, CLI, API và CI dùng chung engine, quy tắc verdict và dữ liệu chạy |
 | D-10 | Chất lượng, trải nghiệm, độ tin cậy và mức hoàn thiện quyết định thiết kế |
+| D-11 | Bổ sung cặp Command Code (chat `deepseek/deepseek-v4.1-flash`, System One `typesafe/jev`, chung 1 key `AGENTQA_CMD_API_KEY`) qua registry mở rộng `models/routes.py`; cặp OpenCode giữ mặc định, chọn pair qua `AGENTQA_MODEL_PAIR`, manifest pin `model_pair` và CLI từ chối mismatch (2026-10-19) |
 
 ### 1.2. Phạm vi
 
@@ -144,14 +145,16 @@ Một lỗi attempt đã phục hồi đúng không tự làm thất bại toàn
 
 ## 7. Policy, quan sát và provider
 
-### 7.1. Route ban đầu
+### 7.1. Route ban đầu và cặp mở rộng
 
 | Thành phần | Model | Base URL | Giao thức | Credential reference |
 |---|---|---|---|---|
-| Jev | `jev-1.13-free` | `https://opencode.ai/zen/v1` | `systemone` | `AGENTQA_JEV_API_KEY` |
-| LLM | `deepseek-v4.1-flash` | `https://opencode.ai/zen/go/v1` | `chat` | `AGENTQA_LLM_API_KEY` |
+| Jev (OpenCode) | `jev-1.13-free` | `https://opencode.ai/zen/v1` | `systemone` | `AGENTQA_JEV_API_KEY` |
+| LLM (OpenCode) | `deepseek-v4.1-flash` | `https://opencode.ai/zen/go/v1` | `chat` | `AGENTQA_LLM_API_KEY` |
+| Jev (Command Code) | `typesafe/jev` | `https://api.commandcode.ai/provider/v1` | `systemone` | `AGENTQA_CMD_API_KEY` |
+| LLM (Command Code) | `deepseek/deepseek-v4.1-flash` | `https://api.commandcode.ai/provider/v1` | `chat` | `AGENTQA_CMD_API_KEY` |
 
-Route/model được đối chiếu với [OpenCode Zen](https://opencode.ai/docs/zen/) và [OpenCode Go](https://opencode.ai/docs/go/). Base URL không bao gồm đường dẫn thao tác; adapter thêm `/systemone` hoặc `/chat/completions` đúng một lần. Giá trị mẫu nằm trong `.env.example`; key không được đặt trong ca, prompt hoặc tài liệu.
+Route/model OpenCode được đối chiếu với [OpenCode Zen](https://opencode.ai/docs/zen/) và [OpenCode Go](https://opencode.ai/docs/go/); cặp Command Code đối chiếu với [Provider API](https://commandcode.ai/docs/provider) và xác minh live ngày 2026-10-19 (`/models` 93 models, `/systemone` và `/chat/completions` đều 200, xem runbook conformance). Base URL không bao gồm đường dẫn thao tác; adapter thêm `/systemone` hoặc `/chat/completions` đúng một lần. Giá trị mẫu nằm trong `.env.example`; key không được đặt trong ca, prompt hoặc tài liệu.
 
 Models dùng hai adapter giao thức riêng và một kết quả nội bộ chuẩn hoá. Không sử dụng client chat để parse Jev System One. Chỉ có cấu hình cho hai route ban đầu; provider mới chưa thuộc phần triển khai. User-Agent nhận diện AgentQA và session Go ổn định theo run/conversation; mỗi attempt retry của cùng conversation giữ session.
 
@@ -177,7 +180,7 @@ RQ1 dùng cùng policy LLM và khả năng hành động; marker số có thể 
 | FR-18 | Jev ghi state đã redaction, question/candidate set, câu trả lời và tín hiệu quyết định | Thiếu answer, NaN/out-of-range, unknown target hoặc option truncation không tạo action liều lĩnh |
 | FR-19 | Quan sát theo ba chế độ, có accounting và provenance riêng | Audit input của vision-first không chứa semantic DOM; hybrid có ca bắt buộc dùng ảnh |
 | FR-20 | Kiểm tra khả năng ảnh và output/schema của route thật trước khi bật tính năng phụ thuộc | Route không nhận ảnh chặn arm cần ảnh; không đổi sang model khác hoặc gọi text-only là vision-first |
-| FR-21 | Provider errors/retries có phân loại và không tự đổi provider/model | Free/quota không còn dùng được hiện rõ nguyên nhân; không chuyển sang `jev-1.13` trả phí |
+| FR-21 | Provider errors/retries có phân loại và không tự đổi provider/model | Free/quota không còn dùng được hiện rõ nguyên nhân; không chuyển sang model trả phí ngoài pair đã pin; GOAT/credits trừ theo plan được ghi missingness thay vì zero |
 
 Confidence và xác suất là tín hiệu lựa chọn, không là bằng chứng đúng. Bộ thresholds có version, chọn trên calibration và giữ cố định trong evaluation; không kế thừa 0.8/0.6 của code cũ.
 
