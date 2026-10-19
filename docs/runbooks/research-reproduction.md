@@ -141,6 +141,31 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
   pre-register riêng `manifest-commandcode-v3.yaml`), kỳ vọng tăng refusal đúng trên ambiguous mà không
   mất correct heal.
 
+### Pre-register v4 — verify lại sau healer fix (2026-10-19)
+
+- Manifest `benchmarks/calibration/manifest-commandcode-v4.yaml` (`profile_id: healing-commandcode-v4`,
+  version 4): cùng verification plan v2/v3 (324 trials), ứng viên quay lại winner gốc
+  `heuristic-0.5-0.1-24` vì code healer đã đổi (quy tắc `duplicate_identity`, PR #6) làm mọi receipt v2/v3
+  hết hiệu lực so sánh. Kỳ vọng: ambiguous chuyển từ false heal sang refusal → 0 errors → bound ≤ 0.01.
+- Lệnh chạy sau khi merge PR chứa fix: `agentqa calibration execute --manifest
+  benchmarks/calibration/manifest-commandcode-v4.yaml --live --stage verify` với
+  `AGENTQA_MODEL_PAIR=commandcode`.
+
+### Finding live v4 — fix chưa đổi hành vi (2026-10-19)
+
+- 324/324 scorable, bound vẫn đúng 0.3789738832817356, phân bố y hệt v2/v3 (ambiguous 108/108 false heal).
+  Receipt `artifacts/calibration/healing-commandcode-v4.json`.
+- Nguyên nhân đã xác minh bằng trial instrument (dump scene thật): twins live cùng (role, tên) `button/Xoá`
+  nhưng khác scope, quy tắc cũ loại scope nên không kích hoạt. Đã sửa thành scope-blind (PR #8).
+
+### Pre-register v5 — verify lại sau fix scope-blind (2026-10-19)
+
+- Manifest `benchmarks/calibration/manifest-commandcode-v5.yaml` (`profile_id: healing-commandcode-v5`,
+  version 5): cùng verification plan 324 trials, winner `heuristic-0.5-0.1-24` + healer scope-blind.
+- Kỳ vọng: ambiguous chuyển sang refuse → 0 errors → bound ≤ 0.01 → ready. Lệnh chạy sau khi merge PR #8:
+  `agentqa calibration execute --manifest benchmarks/calibration/manifest-commandcode-v5.yaml --live --stage verify`
+  với `AGENTQA_MODEL_PAIR=commandcode`.
+
 ### Finding live v3 — ngưỡng không phải nguyên nhân (2026-10-19)
 
 - `heuristic-0.6-0.15-24`: 324/324 scorable, bound **đúng 0.3789738832817356 như v2** → provisional.
