@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from agentqa.contracts.errors import AgentQAValidationError
@@ -116,3 +118,61 @@ def test_verification_receipt_requires_two_groups() -> None:
     )
     assert receipt.status == "provisional"
     assert receipt.reason == "insufficient_independent_groups"
+
+
+@pytest.mark.asyncio
+async def test_verification_run_uses_exact_fixture_seeds_and_distinct_items() -> None:
+    import uuid as uuid_module
+
+    from agentqa.platform.calibration.live import LIVE_CALIBRATION_CASES, run_live_verification
+
+    repo = Path(__file__).resolve().parents[2]
+    from agentqa.platform.calibration import load_manifest
+
+    manifest = load_manifest(repo / "benchmarks" / "calibration" / "manifest-commandcode-v2.yaml")
+    seen_seeds: list[str] = []
+    seen_items: list[str] = []
+    seen_namespaces: list[str] = []
+
+    class StubApp:
+        name = "taskboard"
+
+    class StubHarness:
+        def __init__(self) -> None:
+            self.apps = [StubApp()]
+
+        def arm_mutation(self, app, namespace, operator, params):
+            seen_namespaces.append(namespace)
+            return {"armed": True}
+
+        def seed_case(self, *, logical_key, document):
+            return uuid_module.uuid4()
+
+        def seed_environment(self, *, app, namespace, parameters, fixture_seed=None):
+            seen_seeds.append(str(fixture_seed))
+            seen_items.append(str(parameters.get("item_name")))
+            return uuid_module.uuid4()
+
+        def run_case(self, **kwargs):
+            from agentqa.platform.calibration.live import LiveCaseRun
+
+            return LiveCaseRun(
+                run_id=uuid_module.uuid4(), state={}, usage={"calls": 0, "input_tokens": 0, "output_tokens": 0}
+            )
+
+        def score_run(self, run_id, oracle_record):
+            return {"counters": {"correct_heals": 1, "attempts_total": 1}}
+
+    class StubOracle:
+        def variant_oracle_record(self, payload):
+            return dict(payload)
+
+    outcome = run_live_verification(manifest, StubHarness(), StubOracle(), trial_limit=6)
+    assert len(outcome["trials"]) == 6
+    assert outcome["skipped"] == []
+    allowed = {str(spec["seed"]) for spec in LIVE_CALIBRATION_CASES.values()}
+    assert set(seen_seeds) <= allowed
+    assert len(set(seen_items)) == 6
+    assert len(set(seen_namespaces)) == 6
+    assert outcome["receipt"].sample_units == 6
+    assert outcome["receipt"].status == "provisional"

@@ -118,6 +118,17 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
 - Lệnh chạy: `agentqa calibration execute --manifest benchmarks/calibration/manifest-commandcode-v2.yaml --live --stage verify`
   (và `manifest-v2.yaml` cho cặp OpenCode, với `AGENTQA_MODEL_PAIR` khớp manifest).
 
+### Finding live v2 lần 1 — void do fixture seed (2026-10-19)
+
+- Chạy 324 trials nhưng tất cả `unscorable`, 0 model calls, receipt `missing_units`.
+- Nguyên nhân (lỗi code, đã fix): verification truyền `fixture_seed` có hậu tố seed (`success-20261010`)
+  trong khi `TaskboardFixture.prepare` chỉ nhận seed khai báo (`success`, `duplicate_rejected`, ...) nên
+  fixture không dựng được trạng thái nào. Run void này giữ nguyên làm bằng chứng, không dùng.
+- Fix: verification dùng đúng `fixture_seed` gốc của spec; khác biệt giữa các trial đến từ namespace UUID,
+  item_name riêng (`{base}-{index:03d}-{seed}`), fixture reset và thứ tự xáo trộn — có test khóa
+  (`test_verification_run_uses_exact_fixture_seeds_and_distinct_items`). Manifest v2 không đổi nên
+  pre-register vẫn giữ nguyên hiệu lực.
+
 ### Giới hạn cấu trúc v1 (cả hai pair, 2026-10-19)
 
 - Bound tính theo đơn vị family: `profiles.py:_selection_units` giữ một trial đầu tiên cho mỗi family, và

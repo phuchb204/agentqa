@@ -915,12 +915,13 @@ def run_live_verification(
             continue
         revision = ensure_case(spec)
         run_params = dict(_render_template(dict(spec["run_params"]), index=item, seed=seed))
-        run_params.setdefault("item_name", f"Vật hiệu chuẩn {item:03d}-{seed}")
+        base_name = str(run_params.get("item_name", f"Vật hiệu chuẩn {item:03d}-{seed}"))
+        run_params["item_name"] = f"{base_name}-{item:03d}-{seed}"
         environment = harness.seed_environment(
             app=app,
             namespace=namespace,
             parameters=run_params,
-            fixture_seed=f"{spec['seed']}-{seed}",
+            fixture_seed=str(spec["seed"]),
         )
         run = harness.run_case(
             case_revision_id=revision,
