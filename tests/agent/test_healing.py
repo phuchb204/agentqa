@@ -43,6 +43,45 @@ async def test_recover_valid_target_records_proof_and_runtime_binding() -> None:
 
 
 @pytest.mark.asyncio
+async def test_healer_refuses_duplicates_for_ranker_without_own_check() -> None:
+    from agentqa.agent.healing import Healer
+    from agentqa.contracts.healing import HealingCandidateScore, HealingRanking, RankingOutcome
+
+    class AlwaysRecover:
+        async def rank(self, descriptor, scene, context):
+            return HealingRanking(
+                ranker=RankerKind.LLM,
+                profile_id="synthetic",
+                profile_version="1",
+                outcome=RankingOutcome.RECOVER,
+                scores=[HealingCandidateScore(candidate_id=item.candidate_id, score=0.9) for item in scene],
+                margin=0.1,
+                truncated=False,
+                total_candidates=len(scene),
+                reason=None,
+            )
+
+    healer = Healer(profile=synthetic_profile(), ranker=AlwaysRecover())
+    descriptor = delete_descriptor("Việc A")
+    twins = [
+        delete_scene("Việc A", button_name="Xoá việc", candidate_id="c0"),
+        delete_scene("Việc A", button_name="Xoá việc", candidate_id="c1"),
+    ]
+    decision = await healer.recover(descriptor, twins, context())
+    assert decision.recovered is False
+    assert decision.record.refusal_reason == "duplicate_identity"
+    assert decision.recovered_target is None
+
+    distinct = [
+        delete_scene("Việc A", button_name="Xoá việc", candidate_id="c0"),
+        delete_scene("Việc A", button_name="Đổi trạng thái", candidate_id="c1"),
+    ]
+    decision = await healer.recover(descriptor, distinct, context())
+    assert decision.recovered is True
+    assert decision.recovered_target is not None
+
+
+@pytest.mark.asyncio
 async def test_recovery_refuses_semantic_drift_even_when_score_is_high() -> None:
     healer = build_healer(synthetic_profile())
     descriptor = delete_descriptor("Việc A")
@@ -129,10 +168,11 @@ async def test_cascade_escalates_only_when_heuristic_is_insufficient() -> None:
         delete_scene("Việc A", button_name="Xoá việc", candidate_id="c1"),
     ]
     decision = await healer.recover(delete_descriptor("Việc A"), twins, context())
-    assert decision.recovered is True
+    assert jev.remaining == 0
+    assert decision.recovered is False
+    assert decision.record.refusal_reason == "duplicate_identity"
     assert decision.record.ranking is not None
     assert decision.record.ranking.ranker == RankerKind.CASCADE
-    assert jev.remaining == 0
 
     p2 = CalibrationProfile.model_validate(synthetic_profile(ranker="cascade"))
     jev2 = FakeJev()
