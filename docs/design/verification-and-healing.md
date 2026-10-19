@@ -25,7 +25,7 @@ Ranker tạo candidates từ scope đã khai báo, loại operation/state incomp
 
 Heuristic baseline dùng cùng features/guards và weights từ calibration, không gọi model. LLM/Jev ranker nhận cùng candidates đã redaction, có none/need_more_context. Missing features giữ missing flag, không chấm bằng zero rồi trình bày đầy đủ. Candidate truncation có manifest và có thể yêu cầu vùng context khác; không thử thao tác để dò đáp án.
 
-Thứ tự quyết định của heuristic: thiếu candidates → thiếu features → margin top-2 dưới ngưỡng (`ambiguous_margin`) → **trùng danh tính (`duplicate_identity`)** → điểm dưới ngưỡng. Quy tắc trùng danh tính: trong các candidates còn lại có điểm đạt ngưỡng và qua kiểm tra role/scope, nếu ≥ 2 candidates khác nhau cùng cặp định danh (role, tên) với ứng viên số một thì từ chối — kể cả khi margin đã qua. Margin chỉ bắt được cặp song sinh giống hệt điểm số; cặp song sinh lệch điểm do attribute/geometry (thường gặp trên browser thật, vd nhãn trùng `duplicate_label`) phải bị chặn bởi quy tắc này thay vì chữa bừa.
+Thứ tự quyết định của heuristic: thiếu candidates → thiếu features → margin top-2 dưới ngưỡng (`ambiguous_margin`) → **trùng danh tính (`duplicate_identity`)** → điểm dưới ngưỡng. Quy tắc trùng danh tính (scope-blind): trong các candidates đã lọc, nếu ≥ 2 candidates khác nhau có cùng cặp (role, tên) với ứng viên số một — so khớp tên ghi nhận, không phân biệt scope — thì từ chối, kể cả khi margin đã qua và điểm số khác nhau. Thu hẹp scope là việc của guard (chạy trước healer, cho phép mục tiêu duy nhất trong scope); ranker chỉ thấy các ca guard đã thất bại, nên trùng tên ghi nhận trên trang đồng nghĩa tham chiếu đã mất tính duy nhất. Margin giữ nguyên cho trường hợp bằng điểm.
 
 ## 4. Recovery protocol
 

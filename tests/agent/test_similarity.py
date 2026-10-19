@@ -132,20 +132,21 @@ def test_duplicate_identity_refuses_despite_passing_margin() -> None:
     assert ranking.outcome == RankingOutcome.REFUSE
     assert ranking.reason == "duplicate_identity"
 
-    assert has_duplicate_identity(descriptor, [], 0.55) is False
+    assert has_duplicate_identity(descriptor, []) is False
     assert (
         has_duplicate_identity(
             descriptor,
             [
                 (twins[0], ranking.scores[0], None),
             ],
-            0.55,
         )
         is False
     )
 
 
-def test_duplicate_identity_ignores_out_of_scope_and_weak_distractors() -> None:
+def test_duplicate_identity_ignores_scope_at_ranker_level() -> None:
+    # Ranker từ chối khi tên ghi nhận trùng lặp trên trang, không dùng scope để nới lỏng:
+    # thu hẹp scope là việc của guard (chạy trước healer); ranker chỉ thấy ca guard đã thất bại.
     from agentqa.agent.healing import RankContext
     from agentqa.agent.healing.ranker import HeuristicRanker
     from agentqa.contracts.identity import TargetDescriptor
@@ -159,7 +160,8 @@ def test_duplicate_identity_ignores_out_of_scope_and_weak_distractors() -> None:
         delete_scene("Việc B", button_name="Xoá", candidate_id="c1"),
     ]
     ranking = ranker.rank(descriptor, scene, RankContext(node_id="n1", operation=Operation.CLICK))
-    assert ranking.outcome == RankingOutcome.RECOVER
+    assert ranking.outcome == RankingOutcome.REFUSE
+    assert ranking.reason == "duplicate_identity"
     assert ranking.scores[0].candidate_id == "c0"
 
 
