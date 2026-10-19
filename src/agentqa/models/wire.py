@@ -20,15 +20,28 @@ ZEN_SYSTEMONE_PATH = "/systemone"
 MODEL_ROUTE_ORIGINS: dict[ProviderRoute, str] = {
     ProviderRoute.OPENCODE_GO: "https://opencode.ai/zen/go/v1",
     ProviderRoute.OPENCODE_ZEN: "https://opencode.ai/zen/v1",
+    ProviderRoute.COMMANDCODE_CHAT: "https://api.commandcode.ai/provider/v1",
+    ProviderRoute.COMMANDCODE_SYSTEMONE: "https://api.commandcode.ai/provider/v1",
 }
 
 MODEL_ROUTE_PATHS: dict[ProviderRoute, str] = {
     ProviderRoute.OPENCODE_GO: GO_CHAT_PATH,
     ProviderRoute.OPENCODE_ZEN: ZEN_SYSTEMONE_PATH,
+    ProviderRoute.COMMANDCODE_CHAT: GO_CHAT_PATH,
+    ProviderRoute.COMMANDCODE_SYSTEMONE: ZEN_SYSTEMONE_PATH,
 }
 
 GO_WIRE_VERSION = "opencode-go-chat/1"
 ZEN_WIRE_VERSION = "opencode-zen-systemone/1"
+COMMANDCODE_CHAT_WIRE_VERSION = "commandcode-chat/1"
+COMMANDCODE_SYSTEMONE_WIRE_VERSION = "commandcode-systemone/1"
+
+WIRE_VERSIONS: dict[ProviderRoute, str] = {
+    ProviderRoute.OPENCODE_GO: GO_WIRE_VERSION,
+    ProviderRoute.OPENCODE_ZEN: ZEN_WIRE_VERSION,
+    ProviderRoute.COMMANDCODE_CHAT: COMMANDCODE_CHAT_WIRE_VERSION,
+    ProviderRoute.COMMANDCODE_SYSTEMONE: COMMANDCODE_SYSTEMONE_WIRE_VERSION,
+}
 
 
 class ModelTransportError(Exception):

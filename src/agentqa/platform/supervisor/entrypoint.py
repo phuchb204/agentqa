@@ -312,16 +312,30 @@ async def run(args: argparse.Namespace) -> None:
 LIVE_ROUTE_DEFAULTS = {
     "opencode_go": ("AGENTQA_LLM_API_KEY", "AGENTQA_LLM_BASE_URL", "AGENTQA_LLM_MODEL"),
     "opencode_zen": ("AGENTQA_JEV_API_KEY", "AGENTQA_JEV_BASE_URL", "AGENTQA_JEV_MODEL"),
+    "commandcode_chat": ("AGENTQA_CMD_API_KEY", "AGENTQA_CMD_BASE_URL", "AGENTQA_CMD_CHAT_MODEL"),
+    "commandcode_systemone": ("AGENTQA_CMD_API_KEY", "AGENTQA_CMD_BASE_URL", "AGENTQA_CMD_DECISION_MODEL"),
 }
 LIVE_BASE_DEFAULTS = {
     "opencode_go": "https://opencode.ai/zen/go/v1",
     "opencode_zen": "https://opencode.ai/zen/v1",
+    "commandcode_chat": "https://api.commandcode.ai/provider/v1",
+    "commandcode_systemone": "https://api.commandcode.ai/provider/v1",
 }
-LIVE_MODEL_DEFAULTS = {"opencode_go": "deepseek-v4.1-flash", "opencode_zen": "jev-1.13-free"}
+LIVE_MODEL_DEFAULTS = {
+    "opencode_go": "deepseek-v4.1-flash",
+    "opencode_zen": "jev-1.13-free",
+    "commandcode_chat": "deepseek/deepseek-v4.1-flash",
+    "commandcode_systemone": "typesafe/jev",
+}
+MODEL_PAIR_ROUTES = {
+    "opencode": ("opencode_go", "opencode_zen"),
+    "commandcode": ("commandcode_chat", "commandcode_systemone"),
+}
 
 
 def _build_live_models(sink: MemorySink) -> AgentModels:
     from agentqa.contracts.values import SensitiveValue
+    from agentqa.models.commandcode import CommandCodeChatAdapter, CommandCodeSystemOneAdapter
     from agentqa.models.opencode_go import GoChatAdapter
     from agentqa.models.opencode_zen import ZenSystemOneAdapter
     from agentqa.models.wire import ImagePayload
@@ -339,21 +353,41 @@ def _build_live_models(sink: MemorySink) -> AgentModels:
         model = os.environ.get(model_env) or LIVE_MODEL_DEFAULTS[route]
         return key, base, model
 
-    go_key, go_base, go_model = route_config("opencode_go")
-    jev_key, jev_base, jev_model = route_config("opencode_zen")
-    generative = GoChatAdapter(
-        base_url=go_base,
-        model=go_model,
-        api_key=SensitiveValue(go_key),
-        session_id=f"live-{uuid4().hex[:12]}",
-        image_loader=load_image,
-        structured_output=True,
-    )
-    decision = ZenSystemOneAdapter(
-        base_url=jev_base,
-        model=jev_model,
-        api_key=SensitiveValue(jev_key),
-    )
+    pair = os.environ.get("AGENTQA_MODEL_PAIR", "opencode")
+    if pair not in MODEL_PAIR_ROUTES:
+        raise SystemExit(f"AGENTQA_MODEL_PAIR không hỗ trợ: {pair} (chọn {sorted(MODEL_PAIR_ROUTES)})")
+    chat_route, decision_route = MODEL_PAIR_ROUTES[pair]
+    chat_key, chat_base, chat_model = route_config(chat_route)
+    jev_key, jev_base, jev_model = route_config(decision_route)
+    if chat_route == "commandcode_chat":
+        generative = CommandCodeChatAdapter(
+            base_url=chat_base,
+            model=chat_model,
+            api_key=SensitiveValue(chat_key),
+            image_loader=load_image,
+            structured_output=True,
+        )
+    else:
+        generative = GoChatAdapter(
+            base_url=chat_base,
+            model=chat_model,
+            api_key=SensitiveValue(chat_key),
+            session_id=f"live-{uuid4().hex[:12]}",
+            image_loader=load_image,
+            structured_output=True,
+        )
+    if decision_route == "commandcode_systemone":
+        decision = CommandCodeSystemOneAdapter(
+            base_url=jev_base,
+            model=jev_model,
+            api_key=SensitiveValue(jev_key),
+        )
+    else:
+        decision = ZenSystemOneAdapter(
+            base_url=jev_base,
+            model=jev_model,
+            api_key=SensitiveValue(jev_key),
+        )
     return AgentModels(generative=generative, decision=decision)
 
 

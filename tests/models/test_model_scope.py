@@ -20,16 +20,19 @@ from agentqa.contracts.models import (
     ProviderRoute,
 )
 from agentqa.contracts.values import SensitiveValue
+from agentqa.models.commandcode import CommandCodeChatAdapter, CommandCodeSystemOneAdapter
 from agentqa.models.fakes import HttpRecorder, ScriptedHttp
 from agentqa.models.opencode_go import GoChatAdapter
 from agentqa.models.opencode_zen import ZenSystemOneAdapter
 from agentqa.models.retry import RetryController, RetryPolicy
+from agentqa.models.routes import MODEL_PAIRS, ROUTE_CATALOG
 from agentqa.models.usage import CallLedger
 from agentqa.models.wire import MODEL_ROUTE_ORIGINS, ModelTransportError, ensured_url
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "models"
 GO_BASE = "https://opencode.ai/zen/go/v1"
 ZEN_BASE = "https://opencode.ai/zen/v1"
+CC_BASE = "https://api.commandcode.ai/provider/v1"
 
 
 def load_fixture(name: str) -> dict:
@@ -84,12 +87,51 @@ def make_go(recorder: HttpRecorder, script: list[ScriptedHttp], **kwargs) -> GoC
     )
 
 
-def test_route_allowlist_contains_exactly_two_pinned_routes() -> None:
-    assert set(MODEL_ROUTE_ORIGINS) == {ProviderRoute.OPENCODE_GO, ProviderRoute.OPENCODE_ZEN}
+def test_route_allowlist_contains_exactly_four_pinned_routes() -> None:
+    assert set(MODEL_ROUTE_ORIGINS) == {
+        ProviderRoute.OPENCODE_GO,
+        ProviderRoute.OPENCODE_ZEN,
+        ProviderRoute.COMMANDCODE_CHAT,
+        ProviderRoute.COMMANDCODE_SYSTEMONE,
+    }
     assert MODEL_ROUTE_ORIGINS[ProviderRoute.OPENCODE_GO] == GO_BASE
     assert MODEL_ROUTE_ORIGINS[ProviderRoute.OPENCODE_ZEN] == ZEN_BASE
+    assert MODEL_ROUTE_ORIGINS[ProviderRoute.COMMANDCODE_CHAT] == CC_BASE
+    assert MODEL_ROUTE_ORIGINS[ProviderRoute.COMMANDCODE_SYSTEMONE] == CC_BASE
     assert ensured_url(ProviderRoute.OPENCODE_GO, GO_BASE).endswith("/chat/completions")
     assert ensured_url(ProviderRoute.OPENCODE_ZEN, ZEN_BASE).endswith("/systemone")
+    assert ensured_url(ProviderRoute.COMMANDCODE_CHAT, CC_BASE).endswith("/chat/completions")
+    assert ensured_url(ProviderRoute.COMMANDCODE_SYSTEMONE, CC_BASE).endswith("/systemone")
+
+
+def test_route_catalog_covers_every_allowlisted_route_with_pair() -> None:
+    assert set(ROUTE_CATALOG) == set(MODEL_ROUTE_ORIGINS)
+    for pair_routes in MODEL_PAIRS.values():
+        assert len(pair_routes) == 2
+        families = {ROUTE_CATALOG[route].family for route in pair_routes}
+        assert families == {"chat", "systemone"}
+    assert {spec.key_env for spec in ROUTE_CATALOG.values()} == {
+        "AGENTQA_LLM_API_KEY",
+        "AGENTQA_JEV_API_KEY",
+        "AGENTQA_CMD_API_KEY",
+    }
+
+
+def test_commandcode_adapters_use_own_routes_and_no_session_header() -> None:
+    chat = CommandCodeChatAdapter(
+        base_url=CC_BASE,
+        model="deepseek/deepseek-v4.1-flash",
+        api_key=SensitiveValue("sk-synthetic"),
+    )
+    assert chat.route is ProviderRoute.COMMANDCODE_CHAT
+    assert "x-opencode-session" not in chat._headers()
+    assert chat._headers()["user-agent"].startswith("AgentQA/")
+    decision = CommandCodeSystemOneAdapter(
+        base_url=CC_BASE,
+        model="typesafe/jev",
+        api_key=SensitiveValue("sk-synthetic"),
+    )
+    assert decision.route is ProviderRoute.COMMANDCODE_SYSTEMONE
 
 
 def test_adapter_rejects_unlisted_destination() -> None:

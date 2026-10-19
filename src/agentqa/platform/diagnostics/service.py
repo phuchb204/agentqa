@@ -93,9 +93,9 @@ class DiagnosticService:
                 call_id = await self._usage.start_call(
                     session,
                     workspace_id=workspace_id,
-                    route=ProviderRoute.OPENCODE_GO,
+                    route=getattr(self._model, "route", ProviderRoute.OPENCODE_GO),
                     purpose=MessagePurpose.DIAGNOSTIC,
-                    requested_model="deepseek-v4.1-flash",
+                    requested_model=str(getattr(self._model, "_model", "") or "unknown"),
                 )
             request = GenerationRequest(
                 purpose=MessagePurpose.DIAGNOSTIC,

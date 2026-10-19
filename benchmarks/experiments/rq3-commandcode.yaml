@@ -1,0 +1,63 @@
+schema_version: experiment-manifest/1
+experiment_id: rq3-stability-commandcode
+version: "1"
+research_question: rq3
+corpus:
+  cases: [taskboard_create_item, taskboard_delete_item_healed]
+  data_rows: []
+arms:
+  - arm_id: static_baseline
+    mode: replay
+    policy: replay_strict
+    observation: semantic
+    baseline: true
+    plan_ref: benchmarks/public/baselines/plans/taskboard/create_item_baseline.yaml
+    cohorts: [static]
+  - arm_id: llm_agent
+    mode: agent
+    policy: llm
+    observation: hybrid
+    cohorts: [agent]
+  - arm_id: cascade_agent
+    mode: agent
+    policy: jev_cascade
+    observation: semantic
+    cohorts: [agent]
+  - arm_id: strict_replay
+    mode: replay
+    policy: replay_strict
+    observation: semantic
+    cohorts: [replay]
+  - arm_id: healing_replay
+    mode: replay
+    policy: replay_healing
+    observation: semantic
+    healing: true
+    cohorts: [replay]
+randomisation: {block_seed: 20261010, order: randomised}
+samples:
+  unit: case_family
+  confidence: 0.95
+  pilot_ref: benchmarks/calibration/manifest-commandcode.yaml
+  repetitions: 2
+budgets:
+  max_calls: 500
+  max_cost_usd: 15.0
+  routes:
+    commandcode_chat: deepseek/deepseek-v4.1-flash
+    commandcode_systemone: typesafe/jev
+  model_pair: commandcode
+cache: {bypass_local: true, record_provider_cache: true}
+analysis:
+  primary_endpoints: [oracle_task_success, wall_time_seconds, cost]
+  comparisons:
+    - [llm_agent, static_baseline]
+    - [cascade_agent, llm_agent]
+    - [healing_replay, strict_replay]
+  bootstrap_seed: 20261010
+  bootstrap_replicates: 10000
+  multiple_comparison: holm
+profile_refs: {}
+price_receipts: []
+capability_receipts: []
+seeds: [20261010]

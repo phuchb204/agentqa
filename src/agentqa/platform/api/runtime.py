@@ -45,6 +45,8 @@ from agentqa.platform.usage.service import UsageLedgerService
 DEFAULT_PROVIDER_ENDPOINTS: dict[ProviderRoute, str] = {
     ProviderRoute.OPENCODE_ZEN: "https://opencode.ai/zen/v1",
     ProviderRoute.OPENCODE_GO: "https://opencode.ai/zen/go/v1",
+    ProviderRoute.COMMANDCODE_CHAT: "https://api.commandcode.ai/provider/v1",
+    ProviderRoute.COMMANDCODE_SYSTEMONE: "https://api.commandcode.ai/provider/v1",
 }
 
 

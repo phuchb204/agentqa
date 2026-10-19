@@ -34,10 +34,13 @@ from agentqa.contracts.models import (
     ScoreQuestion,
 )
 from agentqa.contracts.values import SensitiveValue
+from agentqa.models.commandcode import CommandCodeChatAdapter, CommandCodeSystemOneAdapter
 from agentqa.models.opencode_go import GoChatAdapter
 from agentqa.models.opencode_zen import ZenSystemOneAdapter
 from agentqa.models.retry import RetryController, RetryPolicy
 from agentqa.models.wire import (
+    COMMANDCODE_CHAT_WIRE_VERSION,
+    COMMANDCODE_SYSTEMONE_WIRE_VERSION,
     GO_WIRE_VERSION,
     ZEN_WIRE_VERSION,
     ImagePayload,
@@ -54,22 +57,33 @@ from agentqa.platform.models.capabilities import (
 ROUTE_MODELS: dict[ProviderRoute, str] = {
     ProviderRoute.OPENCODE_ZEN: "jev-1.13-free",
     ProviderRoute.OPENCODE_GO: "deepseek-v4.1-flash",
+    ProviderRoute.COMMANDCODE_CHAT: "deepseek/deepseek-v4.1-flash",
+    ProviderRoute.COMMANDCODE_SYSTEMONE: "typesafe/jev",
 }
 
 ROUTE_BASE_URLS: dict[ProviderRoute, str] = {
     ProviderRoute.OPENCODE_ZEN: "https://opencode.ai/zen/v1",
     ProviderRoute.OPENCODE_GO: "https://opencode.ai/zen/go/v1",
+    ProviderRoute.COMMANDCODE_CHAT: "https://api.commandcode.ai/provider/v1",
+    ProviderRoute.COMMANDCODE_SYSTEMONE: "https://api.commandcode.ai/provider/v1",
 }
 
 ROUTE_KEY_ENV: dict[ProviderRoute, str] = {
     ProviderRoute.OPENCODE_ZEN: "AGENTQA_JEV_API_KEY",
     ProviderRoute.OPENCODE_GO: "AGENTQA_LLM_API_KEY",
+    ProviderRoute.COMMANDCODE_CHAT: "AGENTQA_CMD_API_KEY",
+    ProviderRoute.COMMANDCODE_SYSTEMONE: "AGENTQA_CMD_API_KEY",
 }
 
 ROUTE_ADAPTER_SCHEMA: dict[ProviderRoute, str] = {
     ProviderRoute.OPENCODE_ZEN: ZEN_WIRE_VERSION,
     ProviderRoute.OPENCODE_GO: GO_WIRE_VERSION,
+    ProviderRoute.COMMANDCODE_CHAT: COMMANDCODE_CHAT_WIRE_VERSION,
+    ProviderRoute.COMMANDCODE_SYSTEMONE: COMMANDCODE_SYSTEMONE_WIRE_VERSION,
 }
+
+CHAT_ROUTES = (ProviderRoute.OPENCODE_GO, ProviderRoute.COMMANDCODE_CHAT)
+SYSTEMONE_ROUTES = (ProviderRoute.OPENCODE_ZEN, ProviderRoute.COMMANDCODE_SYSTEMONE)
 
 DEFAULT_RECEIPTS_DIR = "artifacts/model-capabilities"
 DEFAULT_MAX_REQUEST_BYTES = 65_536
@@ -212,6 +226,9 @@ def validate_offline(args: argparse.Namespace) -> dict[str, Any]:
     if route is ProviderRoute.OPENCODE_GO and args.max_output_tokens <= 0:
         print(json.dumps({"status": "rejected", "reason": "missing_output_budget"}, ensure_ascii=False))
         raise SystemExit(64)
+    if route is ProviderRoute.COMMANDCODE_CHAT and args.max_output_tokens <= 0:
+        print(json.dumps({"status": "rejected", "reason": "missing_output_budget"}, ensure_ascii=False))
+        raise SystemExit(64)
     if args.max_request_bytes <= 0:
         print(json.dumps({"status": "rejected", "reason": "missing_request_budget"}, ensure_ascii=False))
         raise SystemExit(64)
@@ -259,7 +276,7 @@ async def run_live(
         await client.aclose()
         return 2
     try:
-        if route is ProviderRoute.OPENCODE_GO:
+        if route in CHAT_ROUTES:
             outcome = await _probe_go(args, client, key, sink, budget, recording)
         else:
             outcome = await _probe_zen(args, client, key, sink, budget, recording)
@@ -317,17 +334,29 @@ async def _probe_go(
         "media_type": "image/png",
         "sha256": marker_image_digest(),
     }
-    adapter = GoChatAdapter(
-        base_url=ROUTE_BASE_URLS[ProviderRoute.OPENCODE_GO],
-        model=args.model,
-        api_key=SensitiveValue(key),
-        session_id=session_id,
-        client=client,
-        retry=RetryController(RetryPolicy(max_attempts=1)),
-        image_loader=lambda ref: ImagePayload(media_type="image/png", data=image),
-        structured_output=False,
-        timeout=60.0,
-    )
+    if args.provider == ProviderRoute.COMMANDCODE_CHAT.value:
+        adapter: GoChatAdapter = CommandCodeChatAdapter(
+            base_url=ROUTE_BASE_URLS[ProviderRoute.COMMANDCODE_CHAT],
+            model=args.model,
+            api_key=SensitiveValue(key),
+            client=client,
+            retry=RetryController(RetryPolicy(max_attempts=1)),
+            image_loader=lambda ref: ImagePayload(media_type="image/png", data=image),
+            structured_output=False,
+            timeout=60.0,
+        )
+    else:
+        adapter = GoChatAdapter(
+            base_url=ROUTE_BASE_URLS[ProviderRoute.OPENCODE_GO],
+            model=args.model,
+            api_key=SensitiveValue(key),
+            session_id=session_id,
+            client=client,
+            retry=RetryController(RetryPolicy(max_attempts=1)),
+            image_loader=lambda ref: ImagePayload(media_type="image/png", data=image),
+            structured_output=False,
+            timeout=60.0,
+        )
     text_request = GenerationRequest(
         purpose=MessagePurpose.CONFORMANCE,
         schema_name="conformance_text",
@@ -364,7 +393,11 @@ async def _probe_go(
     else:
         outcome.capabilities[CapabilityKind.USAGE] = CapabilityStatus.UNVERIFIED
         outcome.capabilities[CapabilityKind.CACHE] = CapabilityStatus.UNVERIFIED
-    outcome.capabilities[CapabilityKind.SESSION] = _session_status(recording, session_id)
+    if args.provider == ProviderRoute.COMMANDCODE_CHAT.value:
+        outcome.capabilities[CapabilityKind.SESSION] = CapabilityStatus.UNSUPPORTED
+        outcome.reasons[CapabilityKind.SESSION] = "commandcode_khong_dung_go_session"
+    else:
+        outcome.capabilities[CapabilityKind.SESSION] = _session_status(recording, session_id)
 
     json_request = text_request.model_copy(
         update={
@@ -442,14 +475,24 @@ async def _probe_zen(
     recording: RecordingTransport,
 ) -> ProbeOutcome:
     outcome = ProbeOutcome()
-    adapter = ZenSystemOneAdapter(
-        base_url=ROUTE_BASE_URLS[ProviderRoute.OPENCODE_ZEN],
-        model=args.model,
-        api_key=SensitiveValue(key),
-        client=client,
-        retry=RetryController(RetryPolicy(max_attempts=1)),
-        timeout=60.0,
-    )
+    if args.provider == ProviderRoute.COMMANDCODE_SYSTEMONE.value:
+        adapter = CommandCodeSystemOneAdapter(
+            base_url=ROUTE_BASE_URLS[ProviderRoute.COMMANDCODE_SYSTEMONE],
+            model=args.model,
+            api_key=SensitiveValue(key),
+            client=client,
+            retry=RetryController(RetryPolicy(max_attempts=1)),
+            timeout=60.0,
+        )
+    else:
+        adapter = ZenSystemOneAdapter(
+            base_url=ROUTE_BASE_URLS[ProviderRoute.OPENCODE_ZEN],
+            model=args.model,
+            api_key=SensitiveValue(key),
+            client=client,
+            retry=RetryController(RetryPolicy(max_attempts=1)),
+            timeout=60.0,
+        )
     request = DecisionRequest(
         state={"synthetic": "state cho conformance", "note": "không chứa dữ liệu thật"},
         questions=[

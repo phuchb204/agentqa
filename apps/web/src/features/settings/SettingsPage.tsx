@@ -219,8 +219,20 @@ function ReferencesSection({
 }
 
 const FIXED_PROVIDERS = [
-  { route: "opencode_zen", model: "jev-1.13-free", refs: ["opencode_zen"] },
-  { route: "opencode_go", model: "deepseek-v4.1-flash", refs: ["opencode_go"] },
+  { route: "opencode_zen", model: "jev-1.13-free", refs: ["opencode_zen"], pair: "opencode" },
+  { route: "opencode_go", model: "deepseek-v4.1-flash", refs: ["opencode_go"], pair: "opencode" },
+  {
+    route: "commandcode_systemone",
+    model: "typesafe/jev",
+    refs: ["commandcode"],
+    pair: "commandcode",
+  },
+  {
+    route: "commandcode_chat",
+    model: "deepseek/deepseek-v4.1-flash",
+    refs: ["commandcode"],
+    pair: "commandcode",
+  },
 ];
 
 function ProvidersSection({ workspaceId }: { workspaceId: string }) {
@@ -239,8 +251,9 @@ function ProvidersSection({ workspaceId }: { workspaceId: string }) {
     <section className="panel" data-testid="settings-providers">
       <h3 className="panel__title">Providers</h3>
       <p className="muted">
-        Hai route cố định theo thiết kế; không có fallback trả phí. Readiness dựa trên credential
-        reference đang active.
+        Hai cặp route theo pair đang chọn (<code>AGENTQA_MODEL_PAIR</code>: opencode mặc định,
+        commandcode dùng chung <code>AGENTQA_CMD_API_KEY</code>); không có fallback trả phí tự động.
+        Readiness dựa trên credential reference đang active.
       </p>
       {referencesQuery.isError ? (
         <p className="muted" role="status">

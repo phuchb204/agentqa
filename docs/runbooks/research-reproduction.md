@@ -51,9 +51,64 @@ uv run --env-file .env agentqa experiment execute --manifest benchmarks/experime
 uv run --env-file .env agentqa experiment execute --manifest benchmarks/experiments/rq3.yaml --live
 ```
 
+Biến thể cặp Command Code (cần `AGENTQA_CMD_API_KEY` và `AGENTQA_MODEL_PAIR=commandcode` khớp `budgets.model_pair` trong manifest, CLI từ chối mismatch):
+
+```text
+uv run --env-file .env agentqa experiment execute --manifest benchmarks/experiments/rq1-commandcode.yaml --live
+uv run --env-file .env agentqa experiment execute --manifest benchmarks/experiments/rq2-commandcode.yaml --live
+uv run --env-file .env agentqa experiment execute --manifest benchmarks/experiments/rq3-commandcode.yaml --live
+```
+
 Kết quả RQ có thể bác bỏ giả thuyết; điều đó không cho phép sửa cách chấm.
 
+### Finding live RQ1 cặp Command Code (2026-10-19, key GOAT)
+
+- Lần 1 (`rq1-observation-commandcode-1-1792385016`): 3/6 completed, 3 blocked — arm `vision_first` bị chặn
+  `image_capability_unverified` vì gate ảnh (`experiments/live.py`) chỉ đọc receipt `opencode_go-*`. Đã sửa
+  thành `chat_image_verified(pair)` đọc đúng chat route của pair + kiểm tra expiry, kèm test.
+- Lần 2 sau fix (`rq1-observation-commandcode-1-1792385315`): 6/6 completed, 0 blocked, 48 calls.
+  Cả hai arm oracle success 1/3: hybrid 22 calls (27k in/7.4k out), vision-first 26 calls (43.5k in/8.6k out).
+  Số liệu thô, mẫu nhỏ (3 slots/arm) — vision-first tốn token hơn với cùng tỉ lệ thành công trên mẫu này;
+  kết luận RQ cần mẫu lớn và phân bố, không đọc từ một run thăm dò.
+
+### Finding live RQ2 cặp Command Code (2026-10-19, key GOAT)
+
+- Bundle `rq2-healing-commandcode-1-1792385358`: 8/8 slots completed, 0 blocked, 0 errors, tổng 1 model call.
+  Oracle: ba arm healing (`healing_go_llm`, `heuristic_ranker`, `jev_cascade`) 2/2 đúng; `strict_replay` 1/2 đúng.
+  Heuristic không gọi model; cascade/llm chỉ escalation khi cần nên tổng calls thấp — hành vi đúng thiết kế,
+  không phải thiếu ghi nhận (mọi execution đều có record terminal).
+- False pass 0 trên mẫu này; mẫu nhỏ (2 slots/arm), chưa đủ để kết luận RQ2.
+
+### Finding live RQ3 cặp Command Code (2026-10-19, key GOAT)
+
+- Bundle `rq3-stability-commandcode-1-1792385599`: 20/20 slots completed, 0 blocked/errors, 56 calls.
+  Oracle: `cascade_agent` 4/4 đúng, `healing_replay` 4/4, `llm_agent` 1/4, `static_baseline` 2/4, `strict_replay` 2/4.
+- Điểm chênh đáng chú ý (ghi nhận, không sửa verdict): `cascade_agent` oracle 4/4 nhưng product pass 0.0 —
+  engine không ra verdict passed dù oracle độc lập chấm đúng. Đây đúng là khoảng hở verdict-vs-oracle mà RQ3
+  cần đo, không phải lỗi chấm; cần phân tích run detail trước khi diễn giải.
+- Mẫu thăm dò (4 slots/arm sau repetitions=2), chưa đủ cho kết luận ổn định/chi phí của RQ3.
 ## 5. Calibration hiện tại
 
-Receipt mới nhất: `artifacts/calibration/healing-default-1.json` — `bound_upper=0.776` trên ceiling `0.01`,
+Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.json` — `bound_upper=0.776` trên ceiling `0.01`,
 `evidence=measured` với `groups=2`. Profile giữ **provisional**; không dùng làm verified auto-healing profile.
+
+### Finding live 2026-10-19 (cặp Command Code, key GOAT)
+
+- Manifest `benchmarks/calibration/manifest-commandcode.yaml` (`profile_id: healing-commandcode`), chạy
+  `agentqa calibration execute --live` với `AGENTQA_MODEL_PAIR=commandcode`: 37 trials, 18 model calls,
+  receipt `artifacts/calibration/healing-commandcode-1.json`.
+- Kết quả: `evidence=measured`, `sample_units=2`, `groups=2`, `bound_upper=0.776` (Clopper-Pearson một phía,
+  confidence 0.95) trên ceiling `0.01` → status **provisional** (`bound_exceeds_ceiling`).
+- Dữ liệu là measured và hợp lệ; không nới ngưỡng để đạt. Production auto-healing cho cặp Command Code
+  vẫn chờ calibration đạt ceiling; chi tiết trials trong `artifacts/research/calibration-healing-commandcode-*/trials.json`.
+
+### Giới hạn cấu trúc (cả hai pair, 2026-10-19)
+
+- Bound tính theo đơn vị family: `profiles.py:_selection_units` giữ một trial đầu tiên cho mỗi family, và
+  `build_receipt` đòi ít nhất 2 groups độc lập. Live mapping hiện tại (`live.py:LIVE_CALIBRATION_CASES`) chỉ có
+  3 families trên app taskboard, trong đó split `calibration` chỉ dùng 2 (`taskboard-delete`, `taskboard-ambiguous`)
+  nên số units tối đa là 2, bound tốt nhất có thể là 0.776 trên ceiling 0.01.
+- Chạy thêm repetitions trên cùng families không tăng units. Thoát provisional đòi hỏi hoặc thêm families
+  live-mapped mới (operators + oracle cho shopflow/canvasdesk), hoặc định nghĩa lại đơn vị bound — cả hai đều
+  là thay đổi protocol nghiên cứu, phải chốt mẫu số trước khi chạy theo `research-questions.md`, không tự đổi
+  sau khi xem kết quả.

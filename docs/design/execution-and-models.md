@@ -18,7 +18,7 @@
 | `ActionExecutor` | Agent | Validated command, postcondition read, side-effect outcome; không tính final verdict |
 | `BrowserSupervisor` | Platform process | Session ownership/fence, command journal/admission và kill/close lifecycle |
 | `PlaywrightSession` | Agent browser implementation | BrowserReadPort/ActionPort, context/page/frame, safe capture và allowed actions |
-| `ZenSystemOneAdapter`, `GoChatAdapter` | Models | Native HTTP wire, validation/normalization, request accounting |
+| `ZenSystemOneAdapter`, `GoChatAdapter`, `CommandCodeSystemOneAdapter`, `CommandCodeChatAdapter` | Models | Native HTTP wire theo registry `models/routes.py` (hai cặp opencode/commandcode), validation/normalization, request accounting |
 
 Coordinator không truyền assertion editor hoặc oracle cho policy. Agent biết goal/approved expectations cần thực hiện nhưng không có quyền sửa chúng. Verify đọc cảnh/bằng chứng qua port hạn chế, không lấy quyết định đạt từ Agent.
 
@@ -99,10 +99,12 @@ Với policy LLM live, parser chấp nhận JSON object nằm trong text (bỏ c
 
 ## 8. Hai HTTP adapters
 
-| Adapter | Request | Parse/normalization |
-|---|---|---|
-| `ZenSystemOneAdapter` | POST `https://opencode.ai/zen/v1/systemone`; model `jev-1.13-free`, state, questions keyed ID | Parse System One `answers` theo question type, model/usage nếu có; kiểm tra expected IDs, lựa chọn thuộc criteria và finite values |
-| `GoChatAdapter` | POST `https://opencode.ai/zen/go/v1/chat/completions`; model `deepseek-v4.1-flash`, messages và parameters được conformance cho phép | Parse choices/message structured content hoặc JSON một object; usage/cache/reasoning fields chỉ khi được xác minh |
+| Adapter | Route | Request | Parse/normalization |
+|---|---|---|---|
+| `ZenSystemOneAdapter` | `opencode_zen` | POST `https://opencode.ai/zen/v1/systemone`; model `jev-1.13-free`, state, questions keyed ID | Parse System One `answers` theo question type, model/usage nếu có; kiểm tra expected IDs, lựa chọn thuộc criteria và finite values |
+| `GoChatAdapter` | `opencode_go` | POST `https://opencode.ai/zen/go/v1/chat/completions`; model `deepseek-v4.1-flash`, messages và parameters được conformance cho phép | Parse choices/message structured content hoặc JSON một object; usage/cache/reasoning fields chỉ khi được xác minh |
+| `CommandCodeSystemOneAdapter` | `commandcode_systemone` | POST `https://api.commandcode.ai/provider/v1/systemone`; model `typesafe/jev`, state, questions keyed ID | Cùng shape System One; không có session header; [Provider API](https://commandcode.ai/docs/provider), xác minh live 2026-10-19 |
+| `CommandCodeChatAdapter` | `commandcode_chat` | POST `https://api.commandcode.ai/provider/v1/chat/completions`; model `deepseek/deepseek-v4.1-flash` | Cùng parse OpenAI chat; không gửi `x-opencode-session`; usage `prompt_tokens/completion_tokens` đã có trong parser chung |
 
 Wire System One tham khảo [schema SDK chính thức](https://github.com/typesafe-ai/typesafe-sdk-python/blob/main/src/typesafe_sdk/_schemas/models.py). Gateway có thể thêm/khác fields; fixture từ live conformance của Zen xác nhận wire thực. Không lấy các convenience properties của SDK như `response.choices` làm JSON wire.
 

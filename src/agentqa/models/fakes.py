@@ -52,12 +52,15 @@ class FakeGo:
         *,
         model: str = FAKE_GO_MODEL,
         ledger: CallLedgerPort | None = None,
+        route: ProviderRoute | None = None,
     ) -> None:
         if replies is None:
             replies = [ScriptedGoReply()]
         self._replies = list(replies) if isinstance(replies, list) else [replies]
         self._model = model
         self._ledger = ledger
+        if route is not None:
+            self.route = route
         self.requests: list[GenerationRequest] = []
         self.attempts: list[CallAttempt] = []
 
@@ -121,12 +124,15 @@ class FakeJev:
         *,
         model: str = FAKE_JEV_MODEL,
         ledger: CallLedgerPort | None = None,
+        route: ProviderRoute | None = None,
     ) -> None:
         if replies is None:
             replies = [ScriptedJevReply()]
         self._replies = list(replies) if isinstance(replies, list) else [replies]
         self._model = model
         self._ledger = ledger
+        if route is not None:
+            self.route = route
         self.requests: list[DecisionRequest] = []
         self.attempts: list[CallAttempt] = []
 

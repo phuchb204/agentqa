@@ -60,6 +60,7 @@ class GoChatAdapter:
         structured_output: bool = False,
         timeout: float = 30.0,
         extra_body: dict[str, JsonValue] | None = None,
+        send_session_header: bool = True,
     ) -> None:
         self._url = ensured_url(self.route, base_url)
         self._model = model
@@ -71,6 +72,7 @@ class GoChatAdapter:
         self._image_loader = image_loader
         self._structured_output = structured_output
         self._extra_body = dict(extra_body or {})
+        self._send_session_header = send_session_header
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -119,12 +121,14 @@ class GoChatAdapter:
         return TransportReply(value=reply, usage=usage, resolved_model=model_resolved)
 
     def _headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "authorization": authorization_header(self._api_key.reveal()),
             "content-type": "application/json",
             "user-agent": user_agent(),
-            "x-opencode-session": self._session_id,
         }
+        if self._send_session_header:
+            headers["x-opencode-session"] = self._session_id
+        return headers
 
     def _build_body(self, request: GenerationRequest) -> dict[str, JsonValue]:
         body: dict[str, JsonValue] = dict(self._extra_body)

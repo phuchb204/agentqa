@@ -28,7 +28,7 @@
 | FR-18 | Native System One adapter, independent questions, candidate/schema guard | [Engine](execution-and-models.md) |
 | FR-19 | Semantic/hybrid/vision-first pipelines, modality/input audits | [Engine](execution-and-models.md), [Experiments](experiments-and-evaluation.md) |
 | FR-20 | Route capability receipts và image conformance gate | [Engine](execution-and-models.md) |
-| FR-21 | HTTP retries/accounting theo hai routes cố định, no model fallback | [Engine](execution-and-models.md) |
+| FR-21 | HTTP retries/accounting theo các routes trong registry, no model fallback | [Engine](execution-and-models.md) |
 | FR-22 | Guard ngay cả locator resolve và reused ID/distractor | [Verify](verification-and-healing.md) |
 | FR-23 | Heuristic/LLM/cascade ranking, calibrated acceptance/refusal | [Verify](verification-and-healing.md), [Experiments](experiments-and-evaluation.md) |
 | FR-24 | Immutable expectation/branch/entity constraints và runtime binding | [Contracts](contracts-and-dsl.md), [Verify](verification-and-healing.md) |
