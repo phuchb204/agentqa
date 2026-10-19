@@ -155,10 +155,16 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
 
 - 324/324 scorable, bound vẫn đúng 0.3789738832817356, phân bố y hệt v2/v3 (ambiguous 108/108 false heal).
   Receipt `artifacts/calibration/healing-commandcode-v4.json`.
-- Quy tắc `duplicate_identity` không kích hoạt trên twins live — đang điều tra bằng 1 trial instrument
-  (dump descriptor/scene/scores/ranking/decision) thay vì đoán tiếp. Giả thuyết chính: observation chỉ đưa
-  1 twin tới ranker (twin còn lại bị lọc/dedupe), hoặc twins khác (role, name), hoặc scope không khớp nên
-  bị loại khỏi nhóm trùng.
+- Nguyên nhân đã xác minh bằng trial instrument (dump scene thật): twins live cùng (role, tên) `button/Xoá`
+  nhưng khác scope, quy tắc cũ loại scope nên không kích hoạt. Đã sửa thành scope-blind (PR #8).
+
+### Pre-register v5 — verify lại sau fix scope-blind (2026-10-19)
+
+- Manifest `benchmarks/calibration/manifest-commandcode-v5.yaml` (`profile_id: healing-commandcode-v5`,
+  version 5): cùng verification plan 324 trials, winner `heuristic-0.5-0.1-24` + healer scope-blind.
+- Kỳ vọng: ambiguous chuyển sang refuse → 0 errors → bound ≤ 0.01 → ready. Lệnh chạy sau khi merge PR #8:
+  `agentqa calibration execute --manifest benchmarks/calibration/manifest-commandcode-v5.yaml --live --stage verify`
+  với `AGENTQA_MODEL_PAIR=commandcode`.
 
 ### Finding live v3 — ngưỡng không phải nguyên nhân (2026-10-19)
 
