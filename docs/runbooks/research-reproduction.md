@@ -151,6 +151,15 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
   benchmarks/calibration/manifest-commandcode-v4.yaml --live --stage verify` với
   `AGENTQA_MODEL_PAIR=commandcode`.
 
+### Finding live v4 — fix chưa đổi hành vi (2026-10-19)
+
+- 324/324 scorable, bound vẫn đúng 0.3789738832817356, phân bố y hệt v2/v3 (ambiguous 108/108 false heal).
+  Receipt `artifacts/calibration/healing-commandcode-v4.json`.
+- Quy tắc `duplicate_identity` không kích hoạt trên twins live — đang điều tra bằng 1 trial instrument
+  (dump descriptor/scene/scores/ranking/decision) thay vì đoán tiếp. Giả thuyết chính: observation chỉ đưa
+  1 twin tới ranker (twin còn lại bị lọc/dedupe), hoặc twins khác (role, name), hoặc scope không khớp nên
+  bị loại khỏi nhóm trùng.
+
 ### Finding live v3 — ngưỡng không phải nguyên nhân (2026-10-19)
 
 - `heuristic-0.6-0.15-24`: 324/324 scorable, bound **đúng 0.3789738832817356 như v2** → provisional.
