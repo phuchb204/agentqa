@@ -141,6 +141,20 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
   pre-register riêng `manifest-commandcode-v3.yaml`), kỳ vọng tăng refusal đúng trên ambiguous mà không
   mất correct heal.
 
+### Finding live v3 — ngưỡng không phải nguyên nhân (2026-10-19)
+
+- `heuristic-0.6-0.15-24`: 324/324 scorable, bound **đúng 0.3789738832817356 như v2** → provisional.
+  Phân bố y hệt: ambiguous 108/108 false heal, delete/pilot 108/108 correct.
+- Kết luận có cơ sở: ngưỡng (min_score/margin) không ảnh hưởng — v1 cho thấy cả LLM lẫn cascade cũng
+  false-heal ambiguous trên item cố định, chỉ heuristic refuse được đúng 1 lần nhờ tie chính xác.
+  Vấn đề nằm ở healer: thiếu quy tắc refuse tường minh khi tồn tại distractor trùng danh tính, chứ không
+  phải ở ngưỡng hay số lượng trials. Chạy thêm vòng verify với ứng viên hiện có chỉ tốn tài nguyên.
+- Quyết định: dừng vòng verify ở đây; production auto-healing giữ provisional. Công việc tiếp theo là
+  product fix (quy tắc refuse khi duplicate-identity) rồi mới verify lại từ đầu — thuộc phạm vi thiết kế
+  healer (P20), cần spec riêng, không nhồi thêm vào protocol calibration hiện tại.
+- Không chạy opencode v2: heuristic không gọi model nên hành vi pair-independent; chạy lại chỉ lặp lại
+  kết quả với chi phí browser vô ích. Kết luận áp dụng cho cả hai pair.
+
 ### Giới hạn cấu trúc v1 (cả hai pair, 2026-10-19)
 
 - Bound tính theo đơn vị family: `profiles.py:_selection_units` giữ một trial đầu tiên cho mỗi family, và
