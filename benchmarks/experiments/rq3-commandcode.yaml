@@ -1,6 +1,6 @@
 schema_version: experiment-manifest/1
 experiment_id: rq3-stability-commandcode
-version: "1"
+version: "2"
 research_question: rq3
 corpus:
   cases: [taskboard_create_item, taskboard_delete_item_healed]
@@ -39,10 +39,10 @@ samples:
   unit: case_family
   confidence: 0.95
   pilot_ref: benchmarks/calibration/manifest-commandcode.yaml
-  repetitions: 2
+  repetitions: 5
 budgets:
-  max_calls: 500
-  max_cost_usd: 15.0
+  max_calls: 800
+  max_cost_usd: 30.0
   routes:
     commandcode_chat: deepseek/deepseek-v4.1-flash
     commandcode_systemone: typesafe/jev

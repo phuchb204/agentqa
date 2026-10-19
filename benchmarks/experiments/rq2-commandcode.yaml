@@ -1,6 +1,6 @@
 schema_version: experiment-manifest/1
 experiment_id: rq2-healing-commandcode
-version: "1"
+version: "2"
 research_question: rq2
 corpus:
   cases: [taskboard_delete_item_healed, taskboard_duplicate_label_rejected]
@@ -36,10 +36,10 @@ samples:
   unit: case_family
   confidence: 0.95
   pilot_ref: benchmarks/calibration/manifest-commandcode.yaml
-  repetitions: 1
+  repetitions: 5
 budgets:
   max_calls: 800
-  max_cost_usd: 25.0
+  max_cost_usd: 30.0
   routes:
     commandcode_chat: deepseek/deepseek-v4.1-flash
     commandcode_systemone: typesafe/jev
