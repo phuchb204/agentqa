@@ -158,6 +158,16 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
 - Nguyên nhân đã xác minh bằng trial instrument (dump scene thật): twins live cùng (role, tên) `button/Xoá`
   nhưng khác scope, quy tắc cũ loại scope nên không kích hoạt. Đã sửa thành scope-blind (PR #8).
 
+### Finding live v5 — READY đầu tiên (2026-10-19)
+
+- 324/324 scorable, 0 errors, 0 model calls → bound **0.0092** ≤ ceiling 0.01 → status **ready**.
+  Receipt `artifacts/calibration/healing-commandcode-v5.json` (criteria trial/1, measured).
+- Phân bố đúng thiết kế: `taskboard-delete` 108/108 correct heal, `taskboard-pilot` 108/108 correct heal,
+  `taskboard-ambiguous` 108/108 **refusal** (0 false heal). Quy tắc duplicate-identity scope-blind hoạt động
+  đúng: trang trùng lặp → từ chối, trang benign → phục hồi đúng.
+- Đây là verified auto-healing profile đầu tiên của repo. Bật production auto-healing (gate strict hay
+  allow_healing) là quyết định deployment riêng, không tự động theo receipt ready.
+
 ### Pre-register v5 — verify lại sau fix scope-blind (2026-10-19)
 
 - Manifest `benchmarks/calibration/manifest-commandcode-v5.yaml` (`profile_id: healing-commandcode-v5`,
