@@ -7,13 +7,14 @@ from typing import Protocol
 from uuid import uuid4
 
 from agentqa.agent.healing.features import descriptor_signature, scope_value
-from agentqa.agent.healing.ranker import HeuristicRanker, RankContext
+from agentqa.agent.healing.ranker import HeuristicRanker, RankContext, has_duplicate_identity
 from agentqa.agent.identity.resolver import SceneCandidate
 from agentqa.contracts.actions import Operation
 from agentqa.contracts.calibration import CalibrationProfile
 from agentqa.contracts.canonical import digest_content
 from agentqa.contracts.healing import (
     HealingActor,
+    HealingCandidateScore,
     HealingDecision,
     HealingRanking,
     HealingRecord,
@@ -28,6 +29,19 @@ STATEFUL_OPERATIONS = frozenset({Operation.CLICK, Operation.CHECK, Operation.UNC
 def stable_opportunity_id(context: HealContext, descriptor: TargetDescriptor) -> str:
     material = digest_content({"node": context.node_id, "intent": descriptor.intent, "name": descriptor.name})
     return f"opp-{material[:16]}"
+
+
+def _scored_scene(
+    scene: list[SceneCandidate],
+    ranking: HealingRanking,
+) -> list[tuple[SceneCandidate, HealingCandidateScore, object]]:
+    by_id = {candidate.candidate_id: candidate for candidate in scene}
+    kept: list[tuple[SceneCandidate, HealingCandidateScore, object]] = []
+    for score in ranking.scores:
+        candidate = by_id.get(score.candidate_id)
+        if candidate is not None:
+            kept.append((candidate, score, None))
+    return kept
 
 
 class RankingPort(Protocol):
@@ -128,6 +142,8 @@ class Healer:
         candidate = next((item for item in scene if item.candidate_id == chosen_id), None)
         if candidate is None:
             return self._refuse(descriptor, context, ranking=ranking, reason="candidate_stale")
+        if has_duplicate_identity(descriptor, _scored_scene(scene, ranking)):
+            return self._refuse(descriptor, context, ranking=ranking, reason="duplicate_identity")
         checks = admission_checks(descriptor, candidate, context)
         if checks:
             return self._refuse(
