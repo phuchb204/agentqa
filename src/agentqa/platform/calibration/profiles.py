@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from agentqa.contracts.canonical import digest_content
 from agentqa.platform.calibration.models import (
     CRITERIA_VERSION,
+    VERIFICATION_CRITERIA_VERSION,
     CalibrationManifest,
     CalibrationReceipt,
     CalibrationTrial,
@@ -137,6 +138,56 @@ def build_receipt(
         refusal_coverage=refusal_coverage,
         criteria_version=CRITERIA_VERSION,
         profile_digest=profile_digest,
+        manifest_digest=manifest.digest(),
+        generated_at=datetime.now(UTC),
+        status=status,
+        reason=reason,
+        ranking=ranking or [],
+        sample_size=sample_size,
+        unscorable_units=unscorable,
+    )
+
+
+def build_verification_receipt(
+    manifest: CalibrationManifest,
+    candidate: CandidateResult,
+    trials: Sequence[CalibrationTrial],
+    *,
+    ranking: list[dict] | None = None,
+    sample_size: dict | None = None,
+) -> CalibrationReceipt:
+    units = [trial for trial in trials if not trial.labels.unscorable]
+    unscorable = sum(1 for trial in trials if trial.labels.unscorable)
+    errors = sum(1 for trial in units if trial.labels.false_heal)
+    bound = exact_one_sided(errors, len(units), confidence=manifest.quality_policy.confidence)
+    status = "provisional"
+    reason: str | None = None
+    if any(trial.labels.synthetic for trial in trials):
+        reason = "synthetic_evidence"
+    elif not units:
+        reason = "missing_units"
+    elif len({trial.family for trial in units}) < 2:
+        reason = "insufficient_independent_groups"
+    elif bound.upper is None:
+        reason = "missing_bound"
+    elif bound.upper > manifest.quality_policy.max_false_heal_rate:
+        reason = "bound_exceeds_ceiling"
+    else:
+        status = "ready"
+    return CalibrationReceipt(
+        profile_id=manifest.profile_id,
+        version=manifest.version,
+        evidence="synthetic_test" if any(trial.labels.synthetic for trial in trials) else "measured",
+        sample_units=len(units),
+        groups=len({trial.family for trial in units}),
+        bound_upper=bound.upper,
+        bound_method=bound.method + "+trial_units",
+        confidence=bound.confidence,
+        refusal_coverage=None,
+        criteria_version=VERIFICATION_CRITERIA_VERSION,
+        profile_digest=digest_content(
+            {"candidate": candidate.model_dump(mode="json"), "criteria": VERIFICATION_CRITERIA_VERSION}
+        ),
         manifest_digest=manifest.digest(),
         generated_at=datetime.now(UTC),
         status=status,

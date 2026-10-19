@@ -411,7 +411,14 @@ def _command_calibration_execute(args: argparse.Namespace, *, as_json: bool) -> 
     harness = LiveResearchHarness(apps=apps, root=root, ref_resolver=research_ref_resolver(oracle_module))
     try:
         harness.start()
-        outcome = run_live_calibration(manifest, harness, oracle_module, candidate_limit=args.candidates)
+        if args.stage == "verify":
+            from agentqa.platform.calibration.live import run_live_verification
+
+            if manifest.verification is None:
+                raise CliInputError("Manifest thiếu verification plan (không chạy stage verify)")
+            outcome = run_live_verification(manifest, harness, oracle_module, trial_limit=args.trials)
+        else:
+            outcome = run_live_calibration(manifest, harness, oracle_module, candidate_limit=args.candidates)
     finally:
         harness.stop()
         stop_benchmark_apps(apps)
@@ -705,6 +712,8 @@ def build_parser() -> argparse.ArgumentParser:
     calibration_execute.add_argument("--manifest", required=True)
     calibration_execute.add_argument("--receipt-dir", default=None)
     calibration_execute.add_argument("--candidates", type=int, default=None)
+    calibration_execute.add_argument("--stage", choices=["select", "verify"], default="select")
+    calibration_execute.add_argument("--trials", type=int, default=None)
     calibration_execute.add_argument("--live", action="store_true")
     calibration_execute.set_defaults(handler="calibration-execute")
 

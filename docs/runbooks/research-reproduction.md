@@ -102,7 +102,60 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
 - Dữ liệu là measured và hợp lệ; không nới ngưỡng để đạt. Production auto-healing cho cặp Command Code
   vẫn chờ calibration đạt ceiling; chi tiết trials trong `artifacts/research/calibration-healing-commandcode-*/trials.json`.
 
-### Giới hạn cấu trúc (cả hai pair, 2026-10-19)
+### Protocol v2 — verification winner-only, đơn vị trial (pre-register 2026-10-19)
+
+- Vấn đề: bound v1 tính theo đơn vị family, live mapping chỉ có 2 families cho split calibration nên
+  units tối đa là 2 (bound tốt nhất 0.776) — chạy thêm repetitions không giúp. Đây không phải lỗi code.
+- Quyết định (hướng B): protocol mới, đơn vị bound là trial. Winner v1 cả hai pair là `heuristic-0.5-0.1-24`.
+  Manifest v2 (`manifest-v2.yaml` cho OpenCode, `manifest-commandcode-v2.yaml` cho Command Code) giữ nguyên
+  splits/search space/budgets, thêm `verification`: winner + 3 families × 54 items × 2 seeds = 324 trials,
+  thứ tự xáo trộn theo `shuffle_seed` khai báo trước, mỗi trial namespace/fixture/seed riêng, item/label
+  khác nhau theo `{index}`/`{seed}`.
+- Receipt v2 dùng `criteria_version=acceptance-refusal-loss-trial/1`, bound Clopper-Pearson một phía trên
+  tổng trials scorable; `ready` khi và chỉ khi bound ≤ 0.01 và ≥ 2 families. Tiêu chí chốt trước khi chạy;
+  receipts v1 giữ provisional theo luật cũ, không viết lại.
+- Giới hạn khai báo: v2 đo repeatability trên families đã map, chưa đo khái quát hóa cross-family.
+- Lệnh chạy: `agentqa calibration execute --manifest benchmarks/calibration/manifest-commandcode-v2.yaml --live --stage verify`
+  (và `manifest-v2.yaml` cho cặp OpenCode, với `AGENTQA_MODEL_PAIR` khớp manifest).
+
+### Finding live v2 lần 1 — void do fixture seed (2026-10-19)
+
+- Chạy 324 trials nhưng tất cả `unscorable`, 0 model calls, receipt `missing_units`.
+- Nguyên nhân (lỗi code, đã fix): verification truyền `fixture_seed` có hậu tố seed (`success-20261010`)
+  trong khi `TaskboardFixture.prepare` chỉ nhận seed khai báo (`success`, `duplicate_rejected`, ...) nên
+  fixture không dựng được trạng thái nào. Run void này giữ nguyên làm bằng chứng, không dùng.
+- Fix: verification dùng đúng `fixture_seed` gốc của spec; khác biệt giữa các trial đến từ namespace UUID,
+  item_name riêng (`{base}-{index:03d}-{seed}`), fixture reset và thứ tự xáo trộn — có test khóa
+  (`test_verification_run_uses_exact_fixture_seeds_and_distinct_items`). Manifest v2 không đổi nên
+  pre-register vẫn giữ nguyên hiệu lực.
+
+### Finding live v2 lần 2 — winner v1 bị bác bỏ (2026-10-19)
+
+- 324/324 trials scorable, bound 0.379 trên ceiling 0.01 → **provisional** (`bound_exceeds_ceiling`).
+  Receipt `artifacts/calibration/healing-commandcode-v2.json` (criteria trial/1, measured).
+- Phân bố lỗi nói lên đúng điều cần đo: `taskboard-delete` 108/108 correct, `taskboard-pilot` 108/108
+  correct, `taskboard-ambiguous` 108/108 **false heal** (đáng lẽ phải refuse khi nhãn trùng).
+  Winner v1 (`heuristic-0.5-0.1-24`) an toàn trên item cố định nhưng chữa bừa khi item varies — protocol v2
+  đã làm đúng việc của nó: bác bỏ profile chưa đủ an toàn thay vì cho qua.
+- Bước tiếp theo theo protocol: verify ứng viên ngưỡng chặt hơn (`heuristic-0.6-0.15-24`, manifest v3
+  pre-register riêng `manifest-commandcode-v3.yaml`), kỳ vọng tăng refusal đúng trên ambiguous mà không
+  mất correct heal.
+
+### Finding live v3 — ngưỡng không phải nguyên nhân (2026-10-19)
+
+- `heuristic-0.6-0.15-24`: 324/324 scorable, bound **đúng 0.3789738832817356 như v2** → provisional.
+  Phân bố y hệt: ambiguous 108/108 false heal, delete/pilot 108/108 correct.
+- Kết luận có cơ sở: ngưỡng (min_score/margin) không ảnh hưởng — v1 cho thấy cả LLM lẫn cascade cũng
+  false-heal ambiguous trên item cố định, chỉ heuristic refuse được đúng 1 lần nhờ tie chính xác.
+  Vấn đề nằm ở healer: thiếu quy tắc refuse tường minh khi tồn tại distractor trùng danh tính, chứ không
+  phải ở ngưỡng hay số lượng trials. Chạy thêm vòng verify với ứng viên hiện có chỉ tốn tài nguyên.
+- Quyết định: dừng vòng verify ở đây; production auto-healing giữ provisional. Công việc tiếp theo là
+  product fix (quy tắc refuse khi duplicate-identity) rồi mới verify lại từ đầu — thuộc phạm vi thiết kế
+  healer (P20), cần spec riêng, không nhồi thêm vào protocol calibration hiện tại.
+- Không chạy opencode v2: heuristic không gọi model nên hành vi pair-independent; chạy lại chỉ lặp lại
+  kết quả với chi phí browser vô ích. Kết luận áp dụng cho cả hai pair.
+
+### Giới hạn cấu trúc v1 (cả hai pair, 2026-10-19)
 
 - Bound tính theo đơn vị family: `profiles.py:_selection_units` giữ một trial đầu tiên cho mỗi family, và
   `build_receipt` đòi ít nhất 2 groups độc lập. Live mapping hiện tại (`live.py:LIVE_CALIBRATION_CASES`) chỉ có

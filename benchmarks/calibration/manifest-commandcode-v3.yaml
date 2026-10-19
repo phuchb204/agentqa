@@ -1,0 +1,42 @@
+schema_version: calibration-manifest/1
+profile_id: healing-commandcode-v3
+version: "3"
+feature_schema: healing-features/1
+question_set: healing-questions/1
+splits:
+  calibration:
+    - taskboard-delete:item-1
+    - taskboard-ambiguous:item-1
+  pilot:
+    - taskboard-pilot:item-1
+  evaluation:
+    - taskboard-delete:item-9
+    - canvasdesk-hotspot:cell-2
+search_space:
+  rankers: [heuristic, llm, cascade]
+  min_score: [0.5, 0.55, 0.6]
+  margin_min: [0.1, 0.15]
+  max_candidates: [24]
+quality_policy:
+  max_false_heal_rate: 0.01
+  confidence: 0.95
+  scope: healing
+  ordering: [false_heal_rate, refusal_efficiency, correct_heal_efficiency]
+budgets:
+  max_calls: 400
+  max_cost_usd: 5.0
+  routes:
+    commandcode_chat: deepseek/deepseek-v4.1-flash
+    commandcode_systemone: typesafe/jev
+  model_pair: commandcode
+seeds: [20261010]
+verification:
+  candidate_id: heuristic-0.6-0.15-24
+  ranker: heuristic
+  min_score: 0.6
+  margin_min: 0.1
+  max_candidates: 24
+  families: [taskboard-delete, taskboard-ambiguous, taskboard-pilot]
+  items_per_family: 54
+  seeds: [20261010, 20261019]
+  shuffle_seed: 20261010
