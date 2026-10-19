@@ -578,9 +578,9 @@ class AuthoringService:
             return await self._usage.start_call(
                 session,
                 workspace_id=workspace_id,
-                route=ProviderRoute.OPENCODE_GO,
+                route=getattr(self._model, "route", ProviderRoute.OPENCODE_GO),
                 purpose=MessagePurpose.AUTHORING,
-                requested_model=model_requested or "deepseek-v4.1-flash",
+                requested_model=model_requested or str(getattr(self._model, "_model", "") or "unknown"),
             )
 
     async def _settle_call(

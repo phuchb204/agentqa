@@ -15,6 +15,8 @@ from agentqa.contracts.values import JsonValue, StrictModel
 class ProviderRoute(StrEnum):
     OPENCODE_GO = "opencode_go"
     OPENCODE_ZEN = "opencode_zen"
+    COMMANDCODE_CHAT = "commandcode_chat"
+    COMMANDCODE_SYSTEMONE = "commandcode_systemone"
 
 
 class MessagePurpose(StrEnum):

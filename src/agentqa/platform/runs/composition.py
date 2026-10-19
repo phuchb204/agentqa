@@ -91,6 +91,7 @@ class LedgeredDecision:
         self._inner = inner
         self._ledger = ledger
         self._requested_model = str(getattr(inner, "_model", "") or "unknown")
+        self._route = getattr(inner, "route", ProviderRoute.OPENCODE_ZEN)
 
     async def decide(self, request: DecisionRequest) -> DecisionResult:
         started = _utc_now()
@@ -102,7 +103,7 @@ class LedgeredDecision:
                     call_id=uuid4(),
                     purpose=MessagePurpose.DECIDE,
                     requested_model=self._requested_model,
-                    route=ProviderRoute.OPENCODE_ZEN,
+                    route=self._route,
                     outcome=ModelCallOutcome.FAILED,
                     error_code=_error_code(exc),
                     started_at=started,
@@ -116,7 +117,7 @@ class LedgeredDecision:
                 purpose=MessagePurpose.DECIDE,
                 requested_model=self._requested_model,
                 resolved_model=result.model,
-                route=ProviderRoute.OPENCODE_ZEN,
+                route=self._route,
                 usage=result.usage,
                 outcome=ModelCallOutcome.SUCCEEDED,
                 started_at=started,
@@ -127,8 +128,9 @@ class LedgeredDecision:
 
 
 def ledgered_composition(composition: AgentModels, ledger: CallLedger) -> AgentModels:
+    generative_route = getattr(composition.generative, "route", ProviderRoute.OPENCODE_GO)
     return AgentModels(
-        generative=LedgeredGenerative(composition.generative, ledger, route=ProviderRoute.OPENCODE_GO)
+        generative=LedgeredGenerative(composition.generative, ledger, route=generative_route)
         if composition.generative is not None
         else None,
         decision=LedgeredDecision(composition.decision, ledger) if composition.decision is not None else None,
