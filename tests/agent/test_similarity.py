@@ -94,6 +94,75 @@ def test_thresholds_produce_refusal_and_need_context() -> None:
     assert none.reason == "no_candidate"
 
 
+def test_duplicate_identity_refuses_despite_passing_margin() -> None:
+    from agentqa.agent.healing import RankContext
+    from agentqa.agent.healing.ranker import HeuristicRanker, has_duplicate_identity
+    from agentqa.contracts.identity import TargetDescriptor
+    from tests.support.healing import scope
+
+    profile = synthetic_profile(
+        weights={"role": 0.1, "name": 0.2, "context": 0.1, "stable_attribute": 0.6, "geometry": 0.0}
+    )
+    ranker = HeuristicRanker(profile)
+    descriptor = TargetDescriptor(
+        intent="delete_item",
+        role="button",
+        name="Xoá",
+        entity_scope=scope("Việc A"),
+        attributes={"data-testid": "t1", "label": "xoa"},
+    )
+    twins = [
+        SceneCandidate(
+            candidate_id="c0",
+            role="button",
+            name="Xoá",
+            entity_text="Việc A Chưa xong",
+            attributes={"data-testid": "t1", "label": "xoa"},
+        ),
+        SceneCandidate(
+            candidate_id="c1",
+            role="button",
+            name="Xoá",
+            entity_text="Việc A Chưa xong",
+            attributes={"data-testid": "t2", "label": "xoa"},
+        ),
+    ]
+    ranking = ranker.rank(descriptor, twins, RankContext(node_id="n1", operation=Operation.CLICK))
+    assert ranking.margin is not None and ranking.margin >= 0.15
+    assert ranking.outcome == RankingOutcome.REFUSE
+    assert ranking.reason == "duplicate_identity"
+
+    assert has_duplicate_identity(descriptor, [], 0.55) is False
+    assert (
+        has_duplicate_identity(
+            descriptor,
+            [
+                (twins[0], ranking.scores[0], None),
+            ],
+            0.55,
+        )
+        is False
+    )
+
+
+def test_duplicate_identity_ignores_out_of_scope_and_weak_distractors() -> None:
+    from agentqa.agent.healing import RankContext
+    from agentqa.agent.healing.ranker import HeuristicRanker
+    from agentqa.contracts.identity import TargetDescriptor
+    from tests.support.healing import scope
+
+    profile = synthetic_profile()
+    ranker = HeuristicRanker(profile)
+    descriptor = TargetDescriptor(intent="delete_item", role="button", name="Xoá", entity_scope=scope("Việc A"))
+    scene = [
+        delete_scene("Việc A", button_name="Xoá", candidate_id="c0"),
+        delete_scene("Việc B", button_name="Xoá", candidate_id="c1"),
+    ]
+    ranking = ranker.rank(descriptor, scene, RankContext(node_id="n1", operation=Operation.CLICK))
+    assert ranking.outcome == RankingOutcome.RECOVER
+    assert ranking.scores[0].candidate_id == "c0"
+
+
 def test_candidate_truncation_manifest_records_total() -> None:
     ranker = HeuristicRanker(synthetic_profile(max_candidates=3))
     descriptor = delete_descriptor("Việc A")

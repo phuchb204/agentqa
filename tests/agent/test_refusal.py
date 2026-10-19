@@ -187,5 +187,23 @@ def _heuristic(profile):
     return AsyncHeuristicRanker(HeuristicRanker(profile))
 
 
+@pytest.mark.asyncio
+async def test_identical_twins_refused_by_identity_rule_when_margin_passes() -> None:
+    profile = synthetic_profile(margin_min=0.0)
+    twins = [
+        delete_scene("Việc A", button_name="Xoá việc", candidate_id="c0"),
+        delete_scene("Việc A", button_name="Xoá việc", candidate_id="c1"),
+    ]
+    hooks = FakeHooks(twins)
+    case = case_with([action_node(target_document("Việc A"))])
+    runner = ReplayRunner(case, hooks=hooks, healer=_healer(profile))
+    outcome = await runner.run()
+    record = outcome.healing_records[0]
+    assert record.decision == HealingDecision.REFUSED
+    assert record.refusal_reason == "duplicate_identity"
+    assert len(record.ranking.scores) == 2
+    assert hooks.dispatched == []
+
+
 def _healer(profile) -> Healer:
     return Healer(profile=profile, ranker=_heuristic(profile))
