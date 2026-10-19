@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from agentqa.agent.healing.features import FEATURE_KEYS, candidate_features
+from agentqa.agent.healing.features import FEATURE_KEYS, candidate_features, scope_value
 from agentqa.agent.identity.resolver import SceneCandidate
 from agentqa.contracts.actions import Operation
 from agentqa.contracts.calibration import CalibrationProfile, RankerKind
@@ -37,6 +37,43 @@ def weights_dict(profile: CalibrationProfile) -> dict[str, float]:
         "stable_attribute": weights.stable_attribute,
         "geometry": weights.geometry,
     }
+
+
+def _identity_key(candidate: SceneCandidate) -> tuple[str, str]:
+    return ((candidate.role or "").casefold(), (candidate.name or "").strip().casefold())
+
+
+def _role_scope_match(descriptor: TargetDescriptor, candidate: SceneCandidate) -> bool:
+    if descriptor.role is not None and (candidate.role or "").casefold() != descriptor.role.casefold():
+        return False
+    scope = scope_value(descriptor)
+    if scope is not None:
+        entity_text = candidate.entity_text if candidate.entity_text is not None else candidate.text or ""
+        if scope not in entity_text:
+            return False
+    return True
+
+
+def has_duplicate_identity(
+    descriptor: TargetDescriptor,
+    kept: list[tuple[SceneCandidate, HealingCandidateScore, CandidateView]],
+    min_score: float,
+) -> bool:
+    if not kept:
+        return False
+    key = _identity_key(kept[0][0])
+    matches = 0
+    for candidate, score, _ in kept:
+        if score.score < min_score:
+            continue
+        if _identity_key(candidate) != key:
+            continue
+        if not _role_scope_match(descriptor, candidate):
+            continue
+        matches += 1
+        if matches >= 2:
+            return True
+    return False
 
 
 def filter_candidates(
@@ -116,7 +153,8 @@ class HeuristicRanker:
         margin = None
         if len(scores) >= 2:
             margin = round(scores[0].score - scores[1].score, 4)
-        outcome, reason = self._decide(scores, [item[2] for item in kept], margin)
+        duplicate_identity = has_duplicate_identity(descriptor, kept, self._profile.min_score)
+        outcome, reason = self._decide(scores, [item[2] for item in kept], margin, duplicate_identity)
         return HealingRanking(
             ranker=RankerKind.HEURISTIC,
             profile_id=self._profile.profile_id,
@@ -134,6 +172,7 @@ class HeuristicRanker:
         scores: list[HealingCandidateScore],
         views: list[CandidateView],
         margin: float | None,
+        duplicate_identity: bool,
     ) -> tuple[RankingOutcome, str | None]:
         if not scores:
             return RankingOutcome.NONE, "no_candidate"
@@ -141,6 +180,8 @@ class HeuristicRanker:
             return RankingOutcome.NEED_MORE_CONTEXT, "missing_features"
         if len(scores) > 1 and margin is not None and margin < self._profile.margin_min:
             return RankingOutcome.REFUSE, "ambiguous_margin"
+        if duplicate_identity:
+            return RankingOutcome.REFUSE, "duplicate_identity"
         if scores[0].score < self._profile.min_score:
             return RankingOutcome.REFUSE, "low_score"
         return RankingOutcome.RECOVER, None
