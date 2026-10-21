@@ -704,6 +704,33 @@ LIVE_CALIBRATION_CASES: dict[str, dict[str, Any]] = {
         "params": {"from": "Xoá", "to": "Xoá cũ"},
         "run_params": {"item_name": "Việc pilot"},
     },
+    "canvasdesk-hotspot": {
+        "app": "canvasdesk",
+        "case_key": "canvasdesk_hotspot_select",
+        "seed": "default",
+        "operator": "rename_label",
+        "params": {"from": "Ô B", "to": "Ô B cũ"},
+        "run_params": {},
+        "param_name": None,
+    },
+    "canvasdesk-ambiguous": {
+        "app": "canvasdesk",
+        "case_key": "canvasdesk_hotspot_select",
+        "seed": "default",
+        "operator": "rename_label",
+        "params": {"from": "Ô B", "to": "Ô A"},
+        "run_params": {},
+        "param_name": None,
+    },
+    "shopflow-ambiguous": {
+        "app": "shopflow",
+        "case_key": "shopflow_cart_checkout_async",
+        "seed": "catalog_default",
+        "operator": "rename_label",
+        "params": {"from": "Ly thuỷ tinh", "to": "Bút bi xanh"},
+        "run_params": {"keyword": "Ly"},
+        "param_name": "keyword",
+    },
 }
 
 
@@ -939,8 +966,10 @@ def run_live_verification(
             continue
         revision = ensure_case(spec)
         run_params = dict(_render_template(dict(spec["run_params"]), index=item, seed=seed))
-        base_name = str(run_params.get("item_name", f"Vật hiệu chuẩn {item:03d}-{seed}"))
-        run_params["item_name"] = f"{base_name}-{item:03d}-{seed}"
+        param_name = spec.get("param_name", "item_name")
+        if param_name is not None:
+            base_name = str(run_params.get(param_name, f"Vật hiệu chuẩn {item:03d}-{seed}"))
+            run_params[param_name] = f"{base_name}-{item:03d}-{seed}"
         environment = harness.seed_environment(
             app=app,
             namespace=namespace,
