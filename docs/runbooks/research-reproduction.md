@@ -61,7 +61,15 @@ uv run --env-file .env agentqa experiment execute --manifest benchmarks/experime
 
 Kết quả RQ có thể bác bỏ giả thuyết; điều đó không cho phép sửa cách chấm.
 
-### Finding live RQ1 cặp Command Code (2026-10-19, key GOAT)
+### Finding live RQ1 v2 reps=5 cặp Command Code (2026-10-19, key GOAT)
+
+- Bundle `rq1-observation-commandcode-2-1792403256`: 30/30 slots completed, 0 blocked/errors, 295 calls.
+  Cả hai arm oracle success 6/15 (0.4): hybrid 146 calls, vision-first 149 calls. CIs trùng nhau hoàn toàn —
+  không phát hiện khác biệt tỉ lệ thành công ở cỡ mẫu này; không kết luận tương đương (cần non-inferiority test
+  với mẫu lớn hơn).
+- Số liệu đã qua recompute offline khớp bundle.
+
+### Finding live RQ1 cặp Command Code (2026-10-19, key GOAT, reps=1 thăm dò)
 
 - Lần 1 (`rq1-observation-commandcode-1-1792385016`): 3/6 completed, 3 blocked — arm `vision_first` bị chặn
   `image_capability_unverified` vì gate ảnh (`experiments/live.py`) chỉ đọc receipt `opencode_go-*`. Đã sửa
@@ -79,6 +87,15 @@ Kết quả RQ có thể bác bỏ giả thuyết; điều đó không cho phép
   không phải thiếu ghi nhận (mọi execution đều có record terminal).
 - False pass 0 trên mẫu này; mẫu nhỏ (2 slots/arm), chưa đủ để kết luận RQ2.
 
+### Finding live RQ2 v2 reps=5 cặp Command Code (2026-10-19, key GOAT)
+
+- Bundle `rq2-healing-commandcode-2-1792403431`: 40/40 slots completed, 0 blocked/errors, tổng 5 model calls.
+- Ba arm healing oracle task 10/10 đúng, phát hiện mismatch 5/5, correct heal 5/0, 0 false heal, 0 false pass.
+  `strict_replay` bỏ sót cả 5 mismatch (0/5), oracle task 5/10. Tổng 5 calls đều ở arm `healing_go_llm`.
+- Limitation ghi nhận: arm `jev_cascade` 0 calls — cascade chỉ escalation khi heuristic không quyết được,
+  nên trên mẫu này so sánh thực tế là heuristic-vs-heuristic-vs-strict, không phải cascade thật.
+- Số liệu đã qua recompute offline khớp bundle.
+
 ### Finding live RQ3 cặp Command Code (2026-10-19, key GOAT)
 
 - Bundle `rq3-stability-commandcode-1-1792385599`: 20/20 slots completed, 0 blocked/errors, 56 calls.
@@ -87,6 +104,22 @@ Kết quả RQ có thể bác bỏ giả thuyết; điều đó không cho phép
   engine không ra verdict passed dù oracle độc lập chấm đúng. Đây đúng là khoảng hở verdict-vs-oracle mà RQ3
   cần đo, không phải lỗi chấm; cần phân tích run detail trước khi diễn giải.
 - Mẫu thăm dò (4 slots/arm sau repetitions=2), chưa đủ cho kết luận ổn định/chi phí của RQ3.
+
+### Finding live RQ3 v2 reps=5 cặp Command Code (2026-10-19, key GOAT)
+
+- Bundle `rq3-stability-commandcode-2-1792404305`: 50/50 slots completed, 0 blocked/errors, 181 calls.
+  Oracle: cascade 10/10, healing_replay 10/10, llm 4/10, static 5/10, strict 5/10. Chi phí: cascade 85 calls,
+  llm 96 calls, còn lại 0.
+- `cascade_agent` product pass 0.0 dù oracle 10/10 — đã điều tra root cause (2026-10-21, không tốn thêm calls):
+  đây KHÔNG phải bug scoring. `product_passed = verdict == passed AND gate in (passed, None)`
+  (`evaluation/scoring.py:148`, `experiments/analysis.py:40`). Mọi run live đều dùng `gate_profile="strict"`
+  (`experiments/live.py:216`); gate strict từ chối khi verdict inconclusive, khi run degraded (fallback LLM,
+  `agent/policies/cascade.py:212-220` + `verify/gate.py:56-57`), hoặc khi healed (`verify/gate.py:60-62`).
+  Cascade: 5 slots verdict passed nhưng gate refused + 5 slots verdict inconclusive → product 0/10 đúng luật gate.
+  Kết luận giữ nguyên: khoảng hở verdict-vs-oracle có hệ thống dưới gate strict — finding về độ khắt khe
+  của gate, không phải lỗi chấm. Không sửa scoring/gate để số đẹp hơn.
+- `static_baseline` product pass 1.0 nhưng false pass 5/5 — minh chứng không tin verdict/pass của baseline thiếu assertion.
+- Số liệu đã qua recompute offline khớp bundle.
 ## 5. Calibration hiện tại
 
 Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.json` — `bound_upper=0.776` trên ceiling `0.01`,
