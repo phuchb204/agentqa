@@ -120,6 +120,28 @@ Kết quả RQ có thể bác bỏ giả thuyết; điều đó không cho phép
   của gate, không phải lỗi chấm. Không sửa scoring/gate để số đẹp hơn.
 - `static_baseline` product pass 1.0 nhưng false pass 5/5 — minh chứng không tin verdict/pass của baseline thiếu assertion.
 - Số liệu đã qua recompute offline khớp bundle.
+
+### Probe gate-99 — bằng chứng trực tiếp 3 cơ chế từ chối (2026-10-21, 10 slots, 36 calls)
+
+- Manifest tạm ngoài repo (diagnostic, không phải số liệu luận văn): RQ3 reps=1, 5 arms strict.
+  Bundle `rq3-gate-probe-commandcode-99-1792553590`, recompute khớp.
+- `gate.reasons` (mới ghi nhờ PR #15) cho thấy 3 cơ chế khác nhau sau cùng một `gate: refused`:
+  cascade/create_item (oracle true, verdict passed) → `degraded_not_allowed` — cascade fallback sang LLM
+  ngay cả ca benign; healing_replay/delete_healed (oracle true, verdict passed) → `healed_not_allowed_in_strict`
+  — healing đúng nhưng strict chặn; cascade/delete_healed (oracle true) → `verdict_inconclusive`.
+
+### Intervention gate-99 — dự đoán → can thiệp → khớp 3/3 (2026-10-21, 12 slots, 34 calls)
+
+- Manifest tạm: thêm `cascade_agent_allow` + `healing_replay_allow` (nhờ PR #16), giữ 4 arm strict đối chứng.
+  Bundle `rq3-gate-intervention-commandcode-99-1792553816`, recompute khớp. Dự đoán khóa trước khi chạy, khớp cả 3:
+- `healing_replay_allow`/delete_healed → gate **passed** (lật so với strict) — healing đúng và guards đủ,
+  strict là nguyên nhân duy nhất chặn product pass ở arm này.
+- `cascade_agent_allow`/create_item → vẫn refused `degraded_not_allowed` — degraded không phụ thuộc profile
+  (`verify/gate.py` từ chối degraded với mọi profile). Vấn đề của cascade là degradation (fallback), không phải healing.
+- 4 arm strict lặp lại probe-99 — đối chứng ổn định.
+- Giới hạn: manifest tạm version-99, N nhỏ — đây là bằng chứng cơ chế (mechanism), không phải ước lượng effect-size.
+  Quyết định sản phẩm: giữ default strict (từ chối healed/degraded là invariant an toàn đúng đắn); `gate_profile`
+  theo arm chỉ là công cụ nghiên cứu. Không bật production auto-healing theo receipt — đó là quyết định deployment.
 ## 5. Calibration hiện tại
 
 Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.json` — `bound_upper=0.776` trên ceiling `0.01`,
