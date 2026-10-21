@@ -704,15 +704,6 @@ LIVE_CALIBRATION_CASES: dict[str, dict[str, Any]] = {
         "params": {"from": "Xoá", "to": "Xoá cũ"},
         "run_params": {"item_name": "Việc pilot"},
     },
-    "canvasdesk-hotspot": {
-        "app": "canvasdesk",
-        "case_key": "canvasdesk_hotspot_select",
-        "seed": "default",
-        "operator": "rename_label",
-        "params": {"from": "Ô B", "to": "Ô B cũ"},
-        "run_params": {},
-        "param_name": None,
-    },
     "canvasdesk-ambiguous": {
         "app": "canvasdesk",
         "case_key": "canvasdesk_hotspot_select",

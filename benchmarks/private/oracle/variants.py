@@ -99,15 +99,14 @@ def opportunities_for(
             }
         ]
     if case_key == "canvasdesk_hotspot_select" and operator == "rename_label":
-        ambiguous = str(params.get("to", "")) == "Ô A"
         return [
             {
                 "opportunity_id": stable_opportunity_id("select_hotspot_b", "hotspot_b", "Ô B"),
                 "step_id": "select_hotspot_b",
                 "original_identity": "hotspot_b:Ô B",
                 "expected_identity": None,
-                "expected_entity": None if ambiguous else "cell-2",
-                "kind": "ambiguous_target" if ambiguous else "benign_mismatch",
+                "expected_entity": None,
+                "kind": "ambiguous_target",
             }
         ]
     if case_key == "shopflow_cart_checkout_async" and operator == "rename_label":

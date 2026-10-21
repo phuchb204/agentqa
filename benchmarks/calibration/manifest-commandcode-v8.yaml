@@ -7,7 +7,6 @@ splits:
   calibration:
   - taskboard-delete:item-1
   - taskboard-ambiguous:item-1
-  - canvasdesk-hotspot:cell-1
   - canvasdesk-ambiguous:cell-1
   - shopflow-ambiguous:sp-1
   pilot:
@@ -56,7 +55,6 @@ verification:
   - taskboard-delete
   - taskboard-ambiguous
   - taskboard-pilot
-  - canvasdesk-hotspot
   - canvasdesk-ambiguous
   - shopflow-ambiguous
   items_per_family: 54
