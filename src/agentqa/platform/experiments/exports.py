@@ -65,6 +65,7 @@ def _safe_slot(slot: dict[str, Any]) -> dict[str, Any]:
         "product": payload.get("product"),
         "oracle": payload.get("oracle"),
         "gate": payload.get("gate"),
+        "degraded": payload.get("degraded"),
         "usage": payload.get("usage"),
         "model_requested": payload.get("model_requested"),
         "model_resolved": payload.get("model_resolved"),

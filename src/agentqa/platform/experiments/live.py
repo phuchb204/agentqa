@@ -207,13 +207,16 @@ class LiveSlotRunner:
             app=app, namespace=namespace, parameters=parameters, fixture_seed=seed
         )
         policy = POLICY_BY_ARM.get(str(arm_payload.get("policy")), "replay")
+        gate_profile = str(arm_payload.get("gate_profile", "strict"))
+        if gate_profile not in ("strict", "allow_healing"):
+            return {"status": "blocked", "blocked_reason": f"gate_profile_invalid:{gate_profile}"}
         run = self.harness.run_case(
             case_revision_id=revision,
             environment_revision_id=environment,
             policy=policy,
             observation=str(arm_payload.get("observation", "semantic")),
             healing_profile=_healing_profile(arm_payload, self.manifest),
-            gate_profile="strict",
+            gate_profile=gate_profile,
         )
         self.executed += 1
         self.calls_used += int(run.usage.get("calls", 0))
