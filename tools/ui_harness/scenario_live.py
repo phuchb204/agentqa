@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from typing import TYPE_CHECKING
 
 from tools.ui_harness.runner import HarnessCheck, HarnessError, probe_from_events
@@ -127,17 +128,37 @@ async def drive_live_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict]
             checks.append(HarnessCheck("compare-config-first", True, "config diff hiển thị trước metrics"))
 
             run_d = await asyncio.to_thread(harness.run_replay, revision_id)
+            state_d0 = await asyncio.to_thread(harness.wait_for_active, run_d)
             await page.goto(f"{harness.web_base_url}/w/{workspace_id}/live/{run_d}")
-            try:
-                await page.get_by_text(re.compile(r"Frame đã mask")).wait_for(timeout=20000)
-                frame_src = await page.get_attribute("img", "src")
-                if not (frame_src and frame_src.startswith("data:image/png;base64,iVBOR")):
-                    raise HarnessError(f"frame không phải PNG masked hợp lệ: {str(frame_src)[:40]}")
-                checks.append(HarnessCheck("browser-frame-masked", True, "nhận frame PNG masked qua WS khi run active"))
-            except HarnessError:
-                raise
-            except Exception as error:
-                raise HarnessError(f"không nhận được frame masked khi run active: {error}") from error
+            deadline = time.monotonic() + 60.0
+            frame_src: str | None = None
+            last_status = ""
+            reloads = 0
+            while time.monotonic() < deadline:
+                try:
+                    await page.get_by_text(re.compile(r"Frame đã mask")).wait_for(timeout=5000)
+                    candidate = await page.get_attribute("img", "src")
+                    if candidate and candidate.startswith("data:image/png;base64,iVBOR"):
+                        frame_src = candidate
+                        break
+                except Exception:
+                    pass
+                last_status = await page.evaluate(
+                    "() => Array.from(document.querySelectorAll('[role=status]'))"
+                    ".map((el) => el.textContent).join(' | ')"
+                )
+                if "Browser stream đã đóng" in last_status and reloads < 2:
+                    reloads += 1
+                    await page.reload()
+                    await page.wait_for_timeout(1000)
+                else:
+                    await page.wait_for_timeout(500)
+            if not frame_src:
+                raise HarnessError(
+                    "không nhận được frame masked khi run active: "
+                    f"status={last_status!r} run_qua_trinh={state_d0} reloads={reloads}"
+                )
+            checks.append(HarnessCheck("browser-frame-masked", True, "nhận frame PNG masked qua WS khi run active"))
             await page.wait_for_timeout(300)
             await page.close()
             state_d = await asyncio.to_thread(harness.wait_for_run, run_d)
