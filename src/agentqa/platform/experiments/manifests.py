@@ -20,6 +20,7 @@ class Arm(StrictModel):
     policy: str
     observation: str = "semantic"
     healing: bool = False
+    gate_profile: Literal["strict", "allow_healing"] = "strict"
     plan_ref: str | None = None
     baseline: bool = False
     cohorts: list[str] = Field(default_factory=lambda: ["default"])
