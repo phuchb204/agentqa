@@ -230,6 +230,8 @@ class LiveSlotRunner:
         except Exception as error:
             scoring = {"task_outcome": "unscorable", "counters": {}, "false_pass": False, "error": type(error).__name__}
         product = {"verdict": run.state.get("verdict"), "gate": run.state.get("gate")}
+        gate_detail = self.harness.final_gate(run.run_id)
+        gate = {"result": run.state.get("gate"), "reasons": list(gate_detail.get("reasons") or [])}
         oracle = {
             "task_outcome": scoring.get("oracle_task_outcome"),
             "counters": scoring.get("counters") or {},
@@ -242,7 +244,8 @@ class LiveSlotRunner:
             "run_id": str(run.run_id),
             "product": product,
             "oracle": oracle,
-            "gate": {"result": run.state.get("gate")},
+            "gate": gate,
+            "degraded": bool(gate_detail.get("degraded", False)),
             "usage": run.usage,
             "reasons": list(run.state.get("reasons") or []),
             "aborted_reason": self.harness.abort_reason(run.run_id),
