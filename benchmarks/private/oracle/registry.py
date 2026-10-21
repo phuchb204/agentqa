@@ -67,6 +67,25 @@ RECORDS: dict[str, dict[str, Any]] = {
         ],
         "oracle_task_success": "all_effects",
     },
+    "taskboard_delete_twins_healed": {
+        "app": "taskboard",
+        "fixture_ref": "taskboard@1",
+        "expected_effects": [
+            _effect("counter_equals", counter="item_deleted", value=1),
+            _effect("label_count_equals", parameter="item_name", value=0),
+        ],
+        "opportunities": [
+            {
+                "opportunity_id": stable_opportunity_id("delete_item", "delete_item", "Xoá việc"),
+                "step_id": "delete_item",
+                "original_identity": "delete_item:Xoá việc",
+                "expected_identity": None,
+                "expected_entity": None,
+                "kind": "ambiguous_target",
+            }
+        ],
+        "oracle_task_success": "all_effects",
+    },
     "taskboard_delete_item_healed": {
         "app": "taskboard",
         "fixture_ref": "taskboard@1",

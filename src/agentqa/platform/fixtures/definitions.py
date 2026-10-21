@@ -32,6 +32,10 @@ TASKBOARD_FIXTURE = FixtureDefinition(
             "items": [{"label": "Việc giống nhau"}, {"label": "Việc giống nhau"}],
             "duplicate_policy": "allow",
         },
+        "twins": {
+            "items": [{"label": "Việc trùng"}, {"label": "Việc trùng"}],
+            "duplicate_policy": "allow",
+        },
     },
 )
 

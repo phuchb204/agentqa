@@ -1,22 +1,31 @@
 schema_version: experiment-manifest/1
 experiment_id: rq1-observation-commandcode
-version: "2"
+version: '3'
 research_question: rq1
 corpus:
-  cases: [taskboard_create_item, taskboard_delete_item_healed, shopflow_cart_checkout_async]
+  cases:
+  - taskboard_create_item
+  - taskboard_delete_item_healed
+  - shopflow_cart_checkout_async
+  - shopflow_search_filter
+  - canvasdesk_hotspot_select
   data_rows: []
 arms:
-  - arm_id: agent_llm_hybrid
-    mode: agent
-    policy: llm
-    observation: hybrid
-    cohorts: [default]
-  - arm_id: agent_llm_vision_first
-    mode: agent
-    policy: llm
-    observation: vision_first
-    cohorts: [default]
-randomisation: {block_seed: 20261010, order: randomised}
+- arm_id: agent_llm_hybrid
+  mode: agent
+  policy: llm
+  observation: hybrid
+  cohorts:
+  - default
+- arm_id: agent_llm_vision_first
+  mode: agent
+  policy: llm
+  observation: vision_first
+  cohorts:
+  - default
+randomisation:
+  block_seed: 20261010
+  order: randomised
 samples:
   unit: case_family
   confidence: 0.95
@@ -24,20 +33,26 @@ samples:
   pilot_ref: benchmarks/calibration/manifest-commandcode.yaml
   repetitions: 5
 budgets:
-  max_calls: 600
-  max_cost_usd: 30.0
+  max_calls: 1200
+  max_cost_usd: 60.0
   routes:
     commandcode_chat: deepseek/deepseek-v4.1-flash
     commandcode_systemone: typesafe/jev
   model_pair: commandcode
-cache: {bypass_local: true, record_provider_cache: true}
+cache:
+  bypass_local: true
+  record_provider_cache: true
 analysis:
-  primary_endpoints: [oracle_task_success]
-  comparisons: [[agent_llm_hybrid, agent_llm_vision_first]]
+  primary_endpoints:
+  - oracle_task_success
+  comparisons:
+  - - agent_llm_hybrid
+    - agent_llm_vision_first
   bootstrap_seed: 20261010
   bootstrap_replicates: 10000
   multiple_comparison: holm
 profile_refs: {}
 price_receipts: []
 capability_receipts: []
-seeds: [20261010]
+seeds:
+- 20261010

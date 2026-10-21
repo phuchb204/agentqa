@@ -1,60 +1,80 @@
 schema_version: experiment-manifest/1
 experiment_id: rq2-healing-commandcode
-version: "2"
+version: '3'
 research_question: rq2
 corpus:
-  cases: [taskboard_delete_item_healed, taskboard_duplicate_label_rejected]
+  cases:
+  - taskboard_delete_item_healed
+  - taskboard_duplicate_label_rejected
+  - taskboard_delete_twins_healed
   data_rows: []
 arms:
-  - arm_id: strict_replay
-    mode: replay
-    policy: replay_strict
-    observation: semantic
-    cohorts: [robustness]
-  - arm_id: healing_go_llm
-    mode: replay
-    policy: replay_healing
-    observation: semantic
-    healing: true
-    cohorts: [robustness, fragility]
-  - arm_id: heuristic_ranker
-    mode: replay
-    policy: replay_healing
-    observation: semantic
-    healing: true
-    cohorts: [robustness]
-  - arm_id: jev_cascade
-    mode: replay
-    policy: replay_healing
-    observation: semantic
-    healing: true
-    cohorts: [fragility]
+- arm_id: strict_replay
+  mode: replay
+  policy: replay_strict
+  observation: semantic
+  cohorts:
+  - robustness
+- arm_id: healing_go_llm
+  mode: replay
+  policy: replay_healing
+  observation: semantic
+  healing: true
+  cohorts:
+  - robustness
+  - fragility
+- arm_id: heuristic_ranker
+  mode: replay
+  policy: replay_healing
+  observation: semantic
+  healing: true
+  cohorts:
+  - robustness
+- arm_id: jev_cascade
+  mode: replay
+  policy: replay_healing
+  observation: semantic
+  healing: true
+  cohorts:
+  - fragility
 variant_tokens:
-  taskboard_delete_item_healed: [v-0296b99abd43fe9d]
-randomisation: {block_seed: 20261010, order: randomised}
+  taskboard_delete_item_healed:
+  - v-0296b99abd43fe9d
+randomisation:
+  block_seed: 20261010
+  order: randomised
 samples:
   unit: case_family
   confidence: 0.95
   pilot_ref: benchmarks/calibration/manifest-commandcode.yaml
   repetitions: 5
 budgets:
-  max_calls: 800
+  max_calls: 1200
   max_cost_usd: 30.0
   routes:
     commandcode_chat: deepseek/deepseek-v4.1-flash
     commandcode_systemone: typesafe/jev
   model_pair: commandcode
-cache: {bypass_local: true, record_provider_cache: true}
+cache:
+  bypass_local: true
+  record_provider_cache: true
 analysis:
-  primary_endpoints: [detection_ratio, false_heals, refusal_ratio]
+  primary_endpoints:
+  - detection_ratio
+  - false_heals
+  - refusal_ratio
   comparisons:
-    - [healing_go_llm, strict_replay]
-    - [heuristic_ranker, healing_go_llm]
-    - [jev_cascade, healing_go_llm]
+  - - healing_go_llm
+    - strict_replay
+  - - heuristic_ranker
+    - healing_go_llm
+  - - jev_cascade
+    - healing_go_llm
   bootstrap_seed: 20261010
   bootstrap_replicates: 10000
   multiple_comparison: holm
 profile_refs: {}
 price_receipts: []
 capability_receipts: []
-seeds: [20261010]
+seeds:
+- 20261010
