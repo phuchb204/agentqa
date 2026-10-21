@@ -54,6 +54,25 @@ def test_rq3_five_arms_with_accounting_phases_and_repetitions() -> None:
     assert "wall_time_seconds" in rq3.analysis.primary_endpoints
 
 
+def test_arm_gate_profile_defaults_strict_and_accepts_allow_healing() -> None:
+    content = minimal_manifest(
+        research_question="rq1",
+        arms=[
+            {"arm_id": "agent_llm_hybrid", "mode": "agent", "policy": "llm", "observation": "hybrid"},
+            {
+                "arm_id": "agent_llm_vision_first",
+                "mode": "agent",
+                "policy": "llm",
+                "observation": "vision_first",
+                "gate_profile": "allow_healing",
+            },
+        ],
+    )
+    manifest = ExperimentManifest.model_validate(content)
+    assert manifest.arms[0].gate_profile == "strict"
+    assert manifest.arms[1].gate_profile == "allow_healing"
+
+
 def test_unsupported_image_is_blocked_not_silently_accepted() -> None:
     content = minimal_manifest(
         research_question="rq1",
