@@ -186,6 +186,43 @@ async def test_fail_fast_marks_pending_executions_skipped(runtime) -> None:
     assert len(state["executions"]) == 3
 
 
+async def test_finalized_event_carries_gate_reasons_and_degraded(runtime) -> None:
+    user_id, _username, workspace_id, outcome = await _suite_setup(runtime, fail_fast=True)
+    executions = await _rows(
+        runtime,
+        workspace_id,
+        user_id,
+        sa.select(tables.executions.c.id, tables.executions.c.logical_key)
+        .where(tables.executions.c.run_id == outcome.run_id)
+        .order_by(tables.executions.c.created_at, tables.executions.c.id),
+    )
+    first = executions[0]
+    worker = _worker(runtime, workspace_id=workspace_id, user_id=user_id)
+    refused = ExecutionOutcome(
+        execution_id=first.id,
+        status="failed",
+        verdict="failed",
+        gate="refused",
+        gate_reasons=["degraded_not_allowed"],
+        reasons=["assertion_failed"],
+        capability={},
+        steps=[],
+        assertion_results=[],
+        completion=CompletionOutcome(complete=True, proof_valid=True),
+        trace_refs=[],
+        unknown_commands=[],
+        degraded=True,
+    )
+    await worker._finalize(_spec(user_id, workspace_id, outcome.run_id, first.id, first.logical_key), refused)
+
+    events = await runtime.events.query_durable(workspace_id=workspace_id, principal_id=user_id, run_id=outcome.run_id)
+    finalized = [event for event in events if event["type"] == "run.finalized"]
+    assert len(finalized) == 1
+    assert finalized[0]["summary"]["gate"] == "refused"
+    assert finalized[0]["summary"]["gate_reasons"] == ["degraded_not_allowed"]
+    assert finalized[0]["summary"]["degraded"] is True
+
+
 async def test_fail_fast_disabled_keeps_pending_queued(runtime) -> None:
     user_id, _username, workspace_id, outcome = await _suite_setup(runtime, fail_fast=False)
     executions = await _rows(

@@ -373,7 +373,15 @@ class RunWorker:
             execution_id=spec.execution_id,
             event_type="run.finalized",
             actor=spec.actor,
-            payload={"status": outcome.status, "verdict": outcome.verdict, "execution_id": str(spec.execution_id)},
+            payload={
+                "status": outcome.status,
+                "verdict": outcome.verdict,
+                "gate": outcome.gate,
+                "gate_reasons": list(outcome.gate_reasons),
+                "degraded": outcome.degraded,
+                "reasons": list(outcome.reasons),
+                "execution_id": str(spec.execution_id),
+            },
         )
 
 

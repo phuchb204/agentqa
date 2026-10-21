@@ -476,6 +476,30 @@ class LiveResearchHarness:
 
         return _run_db(fetch())
 
+    def final_gate(self, run_id: UUID) -> dict[str, Any]:
+        assert self.workspace_id is not None and self.user_id is not None
+
+        async def fetch() -> dict[str, Any]:
+            from agentqa.platform.events.service import EventService
+
+            events = await EventService(self._engines[ROLE_API]).query_durable(
+                workspace_id=self.workspace_id,
+                principal_id=self.user_id,
+                run_id=run_id,
+                limit=500,
+            )
+            for event in reversed(events):
+                if event["type"] == "run.finalized":
+                    summary = event.get("summary") or {}
+                    return {
+                        "result": summary.get("gate"),
+                        "reasons": list(summary.get("gate_reasons") or []),
+                        "degraded": bool(summary.get("degraded", False)),
+                    }
+            return {"result": None, "reasons": [], "degraded": False}
+
+        return _run_db(fetch())
+
     def run_state(self, run_id: UUID) -> dict[str, Any]:
         assert self.workspace_id is not None and self.user_id is not None
 
