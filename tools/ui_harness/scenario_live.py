@@ -127,9 +127,17 @@ async def drive_live_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict]
                 raise HarnessError("compare thiếu trạng thái missingness của money/usage")
             checks.append(HarnessCheck("compare-config-first", True, "config diff hiển thị trước metrics"))
 
+            await asyncio.to_thread(harness.pause_worker)
             run_d = await asyncio.to_thread(harness.run_replay, revision_id)
-            state_d0 = await asyncio.to_thread(harness.wait_for_active, run_d)
             await page.goto(f"{harness.web_base_url}/w/{workspace_id}/live/{run_d}")
+            await page.wait_for_function(
+                "() => Array.from(document.querySelectorAll('[role=status]')).some("
+                "  (el) => /Frame đã mask|Không có frame|Browser stream đã đóng|"
+                "Browser view không kết nối được/.test(el.textContent || ''))",
+                timeout=15000,
+            )
+            await asyncio.to_thread(harness.resume_worker)
+            state_d0 = await asyncio.to_thread(harness.wait_for_active, run_d)
             deadline = time.monotonic() + 60.0
             frame_src: str | None = None
             last_status = ""
