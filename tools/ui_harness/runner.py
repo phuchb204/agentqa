@@ -491,11 +491,14 @@ class UiHarness:
         self.worker_stop.clear()
         self._start_worker()
 
-    def seed_ready_case(self, *, logical_key: str = "live_case", item_name: str = ITEM_NAME) -> UUID:
+    def seed_ready_case(
+        self, *, logical_key: str = "live_case", item_name: str = ITEM_NAME, settle_seconds: int = 2
+    ) -> UUID:
         assert self.seed is not None
         from tools.ui_harness.authoring_model import authored_taskboard_case
 
         payload = {"goal": "Tạo việc mới", "requirement_keys": ["create_item"], "sources": []}
+        payload["settle_seconds"] = settle_seconds
         document = authored_taskboard_case(payload)
         document["logical_key"] = logical_key
         document["requirements"] = ["create_item"]

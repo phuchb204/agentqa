@@ -129,7 +129,10 @@ async def drive_live_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict]
 
             await asyncio.to_thread(harness.pause_worker)
             t_submit = time.monotonic()
-            run_d = await asyncio.to_thread(harness.run_replay, revision_id)
+            long_revision = await asyncio.to_thread(
+                harness.seed_ready_case, logical_key="live_case_long", settle_seconds=30
+            )
+            run_d = await asyncio.to_thread(harness.run_replay, long_revision)
             await page.goto(f"{harness.web_base_url}/w/{workspace_id}/live/{run_d}")
             t_goto = time.monotonic()
             await page.wait_for_function(
