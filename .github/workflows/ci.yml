@@ -42,6 +42,13 @@ jobs:
       - run: uv run --locked ruff format --check .
       - run: uv run --locked lint-imports
       - run: uv run --locked pytest -q
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-e2e-failure
+          path: artifacts/ui-e2e
+          if-no-files-found: ignore
+          retention-days: 7
       - run: uv run --locked python tools/export_schemas.py --check
       - run: uv run --locked python tools/check_plan_coverage.py
       - run: uv run --locked python tools/run_os_profile_smoke.py --profile linux
