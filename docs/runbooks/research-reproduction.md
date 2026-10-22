@@ -266,3 +266,30 @@ Receipt mới nhất (cặp OpenCode): `artifacts/calibration/healing-default-1.
   live-mapped mới (operators + oracle cho shopflow/canvasdesk), hoặc định nghĩa lại đơn vị bound — cả hai đều
   là thay đổi protocol nghiên cứu, phải chốt mẫu số trước khi chạy theo `research-questions.md`, không tự đổi
   sau khi xem kết quả.
+
+### Finding live v8 — verify ready trên 5 families (2026-10-22, cặp commandcode)
+
+- Select (`manifest-commandcode-v8.yaml`, 4 calibration + 1 pilot families): provisional
+  (`bound_exceeds_ceiling`), units 4, bound 0.527, 42 calls — đúng kỳ vọng luật cũ theo đơn vị family.
+- Verify ứng viên pre-register `heuristic-0.5-0.1-24` (5 families × 54 items × 2 seeds): **ready**,
+  540/540 trials scorable, bound Clopper-Pearson một phía 0.0055 ≤ ceiling 0.01, 0 model calls
+  (ranker heuristic). Hai families ambiguous mới (canvasdesk/shopflow) refuse đúng thay vì false heal.
+- Bundle verify Elligible làm verified healing profile cho nghiên cứu; production auto-healing vẫn giữ
+  provisional cho tới quyết định deployment riêng.
+
+### Finding RQ2 v3 — cascade leo thang thật trên twins rồi refuse (2026-10-22, cặp commandcode)
+
+- `rq2-commandcode.yaml`: 60/60 slots, 0 blocked/errors, 15 calls.
+  Mỗi arm correct_heals 5, refusals 5, false_heals 0.
+- Case twins (`taskboard_delete_twins_healed`): 20/20 refuse mọi arm (verdict inconclusive → gate refused).
+  Arm cascade tốn đúng 1 call/slot trên twins rồi vẫn refuse — leo thang có thật, không pass hình thức.
+- Kết luận: fixture-seeded twins ép heuristic refuse và cascade phản ứng đúng thiết kế.
+
+### Finding RQ1 v3 — không khác biệt có ý nghĩa, CI rộng như dự kiến (2026-10-22, cặp commandcode)
+
+- `rq1-commandcode.yaml`: 50/50 slots (25/arm), 468 calls, 0 blocked/errors.
+  `agent_llm_hybrid` pass 0.28; `agent_llm_vision_first` pass 0.24.
+- So sánh ghép cặp (5 pairs, bootstrap 10000, Holm): chênh lệch ước lượng 0.2, CI 95% [0.0, 0.6],
+  p = 0.65 — không bác bỏ được giả thuyết ngang nhau; non-inferiority ở margin 0.05 giữ được nhưng CI
+  rộng, đúng như nhận định cần ~750–1500 slots/arm mới thắt được equivalence ở margin này.
+- Chi tiêu live đợt này: select 42 + verify 0 + RQ2 15 + RQ1 468 ≈ 525 calls.
