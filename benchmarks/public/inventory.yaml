@@ -9,6 +9,7 @@ cases:
   benchmarks/public/cases/taskboard/async_create_unknown.yaml: {cohort: async, error_kinds: [async_unknown]}
   benchmarks/public/cases/taskboard/healing_delete_item.yaml: {cohort: recovery, error_kinds: []}
   benchmarks/public/cases/taskboard/healing_evidence_visible.yaml: {cohort: recovery, error_kinds: []}
+  benchmarks/public/cases/taskboard/delete_twins_healed.yaml: {cohort: recovery, error_kinds: []}
   benchmarks/public/cases/shopflow/search_filter.yaml: {cohort: transactional, error_kinds: []}
   benchmarks/public/cases/shopflow/cart_checkout_async.yaml: {cohort: async, error_kinds: [async_unknown]}
   benchmarks/public/cases/shopflow/stock_rejected.yaml: {cohort: transactional, error_kinds: [business_failure]}

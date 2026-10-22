@@ -117,7 +117,7 @@ def test_cases_compile_with_verified_sources() -> None:
     source_digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
     quotes = yaml.safe_load((CASE_DIR / "quotes.yaml").read_text(encoding="utf-8"))
     case_paths = sorted(path for path in CASE_DIR.glob("*.yaml") if path.name != "quotes.yaml")
-    assert len(case_paths) == 5
+    assert len(case_paths) == 6
     for path in case_paths:
         text = path.read_text(encoding="utf-8")
         compiled = compile_case_document(text)

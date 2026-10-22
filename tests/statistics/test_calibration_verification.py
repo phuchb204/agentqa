@@ -150,7 +150,7 @@ async def test_verification_run_uses_exact_fixture_seeds_and_distinct_items() ->
 
         def seed_environment(self, *, app, namespace, parameters, fixture_seed=None):
             seen_seeds.append(str(fixture_seed))
-            seen_items.append(str(parameters.get("item_name")))
+            seen_items.append("|".join(f"{key}={value}" for key, value in sorted(parameters.items())))
             return uuid_module.uuid4()
 
         def run_case(self, **kwargs):

@@ -37,10 +37,12 @@ APP_DEFAULT_SEED = {
 
 CASE_SEEDS = {
     "taskboard_duplicate_label_rejected": "duplicate_rejected",
+    "taskboard_delete_twins_healed": "twins",
 }
 
 CASE_PARAMETERS = {
     "taskboard_duplicate_label_rejected": {"item_name": "Việc trùng"},
+    "taskboard_delete_twins_healed": {"item_name": "Việc trùng"},
 }
 
 SCRATCH_SEEDS = {

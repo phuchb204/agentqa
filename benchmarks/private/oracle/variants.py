@@ -98,6 +98,28 @@ def opportunities_for(
                 "kind": "ambiguous_target",
             }
         ]
+    if case_key == "canvasdesk_hotspot_select" and operator == "rename_label":
+        return [
+            {
+                "opportunity_id": stable_opportunity_id("select_hotspot_b", "hotspot_b", "Ô B"),
+                "step_id": "select_hotspot_b",
+                "original_identity": "hotspot_b:Ô B",
+                "expected_identity": None,
+                "expected_entity": None,
+                "kind": "ambiguous_target",
+            }
+        ]
+    if case_key == "shopflow_cart_checkout_async" and operator == "rename_label":
+        return [
+            {
+                "opportunity_id": stable_opportunity_id("add_product", "add_to_cart", "Thêm Ly thuỷ tinh vào giỏ"),
+                "step_id": "add_product",
+                "original_identity": "add_to_cart:Thêm Ly thuỷ tinh vào giỏ",
+                "expected_identity": None,
+                "expected_entity": None,
+                "kind": "ambiguous_target",
+            }
+        ]
     return []
 
 
