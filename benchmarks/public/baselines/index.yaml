@@ -30,6 +30,12 @@ case_baselines:
   plan_sha256: 156e5dd99225a8c25be71377d7487ef530cfd73e6bb85f654f399b2a9f506cb3
   provenance: manual_authoring
   version: 1
+- app: taskboard
+  case: benchmarks/public/cases/taskboard/delete_twins_healed.yaml
+  plan: benchmarks/public/baselines/plans/taskboard/delete_item_baseline.yaml
+  plan_sha256: 156e5dd99225a8c25be71377d7487ef530cfd73e6bb85f654f399b2a9f506cb3
+  provenance: manual_authoring
+  version: 1
 - app: shopflow
   case: benchmarks/public/cases/shopflow/search_filter.yaml
   plan: benchmarks/public/baselines/plans/shopflow/search_filter_baseline.yaml
