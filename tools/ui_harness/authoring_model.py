@@ -134,6 +134,13 @@ def authored_taskboard_case(payload: dict[str, Any]) -> dict[str, Any]:
                 "postconditions": ["item_created"],
             },
             {
+                "id": "settle_wait",
+                "kind": "action",
+                "operation": "wait",
+                "value": {"kind": "literal", "value": 10},
+                "side_effect": "read",
+            },
+            {
                 "id": "result",
                 "kind": "checkpoint",
                 "assertions": [
