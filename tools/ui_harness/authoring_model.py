@@ -137,7 +137,7 @@ def authored_taskboard_case(payload: dict[str, Any]) -> dict[str, Any]:
                 "id": "settle_wait",
                 "kind": "action",
                 "operation": "wait",
-                "value": {"kind": "literal", "value": 10},
+                "value": {"kind": "literal", "value": payload.get("settle_seconds", 2)},
                 "side_effect": "read",
             },
             {

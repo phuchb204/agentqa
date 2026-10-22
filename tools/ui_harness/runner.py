@@ -491,11 +491,14 @@ class UiHarness:
         self.worker_stop.clear()
         self._start_worker()
 
-    def seed_ready_case(self, *, logical_key: str = "live_case", item_name: str = ITEM_NAME) -> UUID:
+    def seed_ready_case(
+        self, *, logical_key: str = "live_case", item_name: str = ITEM_NAME, settle_seconds: int = 2
+    ) -> UUID:
         assert self.seed is not None
         from tools.ui_harness.authoring_model import authored_taskboard_case
 
         payload = {"goal": "Tạo việc mới", "requirement_keys": ["create_item"], "sources": []}
+        payload["settle_seconds"] = settle_seconds
         document = authored_taskboard_case(payload)
         document["logical_key"] = logical_key
         document["requirements"] = ["create_item"]
@@ -824,37 +827,26 @@ class UiHarness:
 
         return _run_db(query())
 
-    def wait_for_active(self, run_id: UUID, *, timeout: float = 60.0) -> dict[str, Any]:
+    def peek_run(self, run_id: UUID) -> dict[str, Any]:
         assert self.seed is not None
 
-        async def poll() -> dict[str, Any]:
+        async def query() -> dict[str, Any]:
             engine = create_async_engine(self.dsn_by_role[ROLE_API])
             try:
                 factory = create_session_factory(engine)
-                deadline = time.monotonic() + timeout
-                while time.monotonic() < deadline:
-                    async with factory() as session, session.begin():
-                        await set_scope(session, principal_id=self.seed.user_id, workspace_id=self.seed.workspace_id)
-                        row = (await session.execute(sa.select(tables.runs).where(tables.runs.c.id == run_id))).one()
-                    if row.status == "running" or row.status in (
-                        "succeeded",
-                        "failed",
-                        "cancelled",
-                        "inconclusive",
-                        "error",
-                    ):
-                        return {
-                            "status": row.status,
-                            "verdict": row.verdict,
-                            "gate": row.gate,
-                            "reasons": list(row.reasons or []),
-                        }
-                    await asyncio.sleep(0.5)
-                raise HarnessError(f"run {run_id} không vào running trong {timeout}s")
+                async with factory() as session, session.begin():
+                    await set_scope(session, principal_id=self.seed.user_id, workspace_id=self.seed.workspace_id)
+                    row = (await session.execute(sa.select(tables.runs).where(tables.runs.c.id == run_id))).one()
+                return {
+                    "status": row.status,
+                    "verdict": row.verdict,
+                    "gate": row.gate,
+                    "reasons": list(row.reasons or []),
+                }
             finally:
                 await engine.dispose()
 
-        return _run_db(poll())
+        return _run_db(query())
 
     def run_replay(self, case_revision_id: UUID, *, policy: str = "default", gate_profile: str = "strict") -> UUID:
         assert self.seed is not None
