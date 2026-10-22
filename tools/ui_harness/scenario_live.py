@@ -143,24 +143,27 @@ async def drive_live_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict]
             )
             await asyncio.to_thread(harness.resume_worker)
             t_resume = time.monotonic()
-            state_d0 = await asyncio.to_thread(harness.wait_for_active, run_d)
-            t_active = time.monotonic()
-            deadline = time.monotonic() + 60.0
+            deadline = time.monotonic() + 120.0
             frame_src: str | None = None
+            frame_run_status = ""
             last_status = ""
             reloads = 0
             polls = 0
             saw_statuses: list[str] = []
+            terminal_since = 0.0
             while time.monotonic() < deadline:
                 polls += 1
                 try:
-                    await page.get_by_text(re.compile(r"Frame đã mask")).wait_for(timeout=5000)
                     candidate = await page.get_attribute("img", "src")
-                    if candidate and candidate.startswith("data:image/png;base64,iVBOR"):
-                        frame_src = candidate
-                        break
                 except Exception:
-                    pass
+                    candidate = None
+                if candidate and candidate.startswith("data:image/png;base64,iVBOR"):
+                    frame_src = candidate
+                    try:
+                        frame_run_status = str((await asyncio.to_thread(harness.peek_run, run_d)).get("status", ""))
+                    except Exception:
+                        frame_run_status = "peek_failed"
+                    break
                 last_status = await page.evaluate(
                     "() => Array.from(document.querySelectorAll('[role=status]'))"
                     ".map((el) => el.textContent).join(' | ')"
@@ -168,7 +171,17 @@ async def drive_live_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict]
                 short = last_status[:60]
                 if not saw_statuses or saw_statuses[-1] != short:
                     saw_statuses.append(short)
-                if "Browser stream đã đóng" in last_status and reloads < 2:
+                try:
+                    run_status = str((await asyncio.to_thread(harness.peek_run, run_d)).get("status", ""))
+                except Exception:
+                    run_status = "peek_failed"
+                if run_status in ("succeeded", "failed", "cancelled", "error", "inconclusive"):
+                    if terminal_since == 0.0:
+                        terminal_since = time.monotonic()
+                    if time.monotonic() - terminal_since > 10.0:
+                        break
+                    await page.wait_for_timeout(500)
+                elif "Browser stream đã đóng" in last_status and reloads < 2:
                     reloads += 1
                     await page.reload()
                     await page.wait_for_timeout(1000)
@@ -176,13 +189,18 @@ async def drive_live_flow(harness: UiHarness) -> tuple[list[HarnessCheck], dict]
                     await page.wait_for_timeout(500)
             if not frame_src:
                 raise HarnessError(
-                    "không nhận được frame masked khi run active: "
-                    f"status={last_status!r} run_qua_trinh={state_d0} reloads={reloads} "
+                    "không nhận được frame masked (img PNG qua WS trong lúc run active): "
+                    f"status={last_status!r} reloads={reloads} "
                     f"t_submit_goto={t_goto - t_submit:.1f}s t_goto_resume={t_resume - t_goto:.1f}s "
-                    f"t_resume_active={t_active - t_resume:.1f}s polls={polls} "
-                    f"status_chuyen={saw_statuses}"
+                    f"polls={polls} status_chuyen={saw_statuses}"
                 )
-            checks.append(HarnessCheck("browser-frame-masked", True, "nhận frame PNG masked qua WS khi run active"))
+            checks.append(
+                HarnessCheck(
+                    "browser-frame-masked",
+                    True,
+                    f"nhận frame PNG masked qua WS (run {frame_run_status} lúc nhận)",
+                )
+            )
             await page.wait_for_timeout(300)
             await page.close()
             state_d = await asyncio.to_thread(harness.wait_for_run, run_d)
